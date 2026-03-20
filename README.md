@@ -29,14 +29,26 @@ missing config and runs setup automatically before proceeding.
 
 ## Installation
 
-Install the skill into Claude Code, then run setup:
+### From GitHub
 
-```bash
-claude plugin install /path/to/competitor-research
+```
+/plugin marketplace add 3D-Stories/competitor-research
+/plugin install competitor-research@competitor-research
+/reload-plugins
 ```
 
-After installing, run `/competitor-research setup` in your first session to configure
-dependencies (NotebookLM CLI, Google AI Mode MCP, critique tools).
+### Updating
+
+If updating to a newer version, remove the stale marketplace first:
+
+```
+/plugin marketplace remove competitor-research
+/plugin marketplace add 3D-Stories/competitor-research
+/plugin install competitor-research@competitor-research
+/reload-plugins
+```
+
+After installing, run `/competitor-research setup` to configure dependencies.
 
 ## Usage
 

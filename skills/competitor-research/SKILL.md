@@ -56,9 +56,19 @@ fi
 ### Setup Step 2: Virtual Display (headless only)
 
 If headless:
-1. Check if `/vnc-service:setup` skill is available
+1. Check if `/vnc-service:setup` skill is available in the skills list
 2. If available: invoke `/vnc-service:setup` to install and configure the virtual display + VNC
-3. If not available: provide manual instructions for installing Xvfb + x11vnc
+3. If NOT available: guide the user to install the vnc-service plugin:
+   ```
+   The vnc-service plugin is required for headless browser interactions but is not installed.
+   Install it now:
+
+   /plugin marketplace add 3D-Stories/vnc-service
+   /plugin install vnc-service@vnc-service
+   /reload-plugins
+   ```
+   After reload, verify `/vnc-service:setup` is now in the available skills list.
+   Then invoke `/vnc-service:setup`.
 4. After setup, invoke `/vnc-service:run` to ensure it's running and get connection info
 5. Wait for user to confirm VNC connection before proceeding
 

@@ -65,10 +65,14 @@ If headless:
 ### Setup Step 3: NotebookLM CLI
 
 1. Check: `notebooklm --version`
-2. If missing: install from PyPI:
+2. If missing: install from PyPI and register the skill:
    ```bash
    pip install notebooklm-py
    notebooklm skill install
+   ```
+   Then reload plugins so the session picks up the new notebooklm skill:
+   ```
+   /reload-plugins
    ```
 3. Check: `notebooklm status` for auth
 4. If not authenticated:
@@ -80,18 +84,15 @@ If headless:
 ### Setup Step 4: Google AI Mode MCP
 
 1. Check if `mcp__google-ai-search__search_ai` is in the available tools list
-2. If missing: install the MCP server:
-   ```bash
-   claude mcp add google-ai-search \
-     -e GOOGLE_AI_CAPTCHA_TIMEOUT=600000 \
-     -e GOOGLE_AI_CAPTCHA_MAX_CONSECUTIVE=10 \
-     -e GOOGLE_AI_CAPTCHA_POLL_INTERVAL=5000 \
-     -e GOOGLE_AI_RESPONSE_TIMEOUT=60000 \
-     -e DISPLAY=:99 \
-     -- npx google-ai-mode-mcp@latest
+2. If missing: install the MCP server using the session `/mcp` command:
+   ```
+   /mcp add google-ai-search npx google-ai-mode-mcp@latest
    ```
    Note: Do NOT use `xvfb-run` wrapper — use the persistent display from `/vnc-service:setup`.
-   Inform user: "Google AI Mode MCP installed. You'll need to restart the session for it to activate."
+   The MCP server will use `DISPLAY=:99` from the environment.
+
+   Inform user: "Google AI Mode MCP installed. You'll need to **restart the session** for the
+   MCP server to initialize. MCP servers only load at session start."
    **Stop and wait for session restart.**
 3. If present: test with a simple search:
    ```
@@ -121,11 +122,17 @@ Which option?
 
 Check for critique tools in priority order:
 
-1. **BMAD Party Mode** — search for installation:
+1. **BMAD Party Mode** — search for installation (check common paths first, then broad search):
    ```bash
-   find ~ -name "agent-manifest.csv" -path "*/_bmad/*" 2>/dev/null | head -1
+   # Check common locations first (fast)
+   for d in ~/bmad ~/BMAD ~/.bmad; do
+     [ -f "$d/_bmad/_config/agent-manifest.csv" ] && echo "$d/_bmad" && break
+   done
+   # Fallback: broader search with depth limit (slower but thorough)
+   find ~ -maxdepth 4 -name "agent-manifest.csv" -path "*/_bmad/*" 2>/dev/null | head -1
    ```
-   If found: store the path (e.g., `/home/user/bmad/_bmad`). Party mode will be used for critique.
+   If found: store the **parent directory of `_config/`** as `bmad_path` (e.g., `/home/user/bmad/_bmad`).
+   Step 7 will reference the agent manifest at `{bmad_path}/_config/agent-manifest.csv`.
 
 2. **reflexion:critique** — check if available in skills list.
    If available: use as critique tool.
@@ -135,9 +142,10 @@ Check for critique tools in priority order:
    No critique tool found. Would you like to install reflexion?
    This provides multi-judge quality review for briefs.
 
-   Install commands:
+   Install commands (run in session):
      /plugin marketplace add NeoLabHQ/context-engineering-kit
      /plugin install reflexion@NeoLabHQ/context-engineering-kit
+     /reload-plugins
 
    Install now? (y/n)
    ```
@@ -407,21 +415,29 @@ Regenerate the combined file if revisions are made.
 
 **Checkpoint:** Critique complete. Brief finalized.
 
-### Step 8: Clean Up NotebookLM Sources
+### Step 8: Upload Consolidated Brief FIRST
 
-**Requires user confirmation.**
-
-1. Present the list of source IDs to delete (unique + duplicates + wrong-company)
-2. Ask: "Ready to delete these {N} sources and replace with the consolidated brief? (y/n)"
-3. On confirmation: delete each source via `notebooklm source delete {source_id}`
-
-**Checkpoint:** Old sources removed.
-
-### Step 9: Upload Consolidated Brief
+**Upload BEFORE deleting old sources** — this eliminates the data loss window. If upload
+fails, the original sources are still intact.
 
 1. Upload: `notebooklm source add {path_to_full_brief}`
 2. Wait: `notebooklm source wait {source_id}`
-3. Verify: `notebooklm source list`
+3. Verify it appears: `notebooklm source list`
+
+If upload fails: inform user the brief is available locally at `{path}` and can be manually
+uploaded later. Do NOT proceed to deletion.
+
+### Step 9: Clean Up NotebookLM Sources
+
+**Requires user confirmation. Only proceed after Step 8 upload is verified.**
+
+1. Present the list of source IDs to delete (unique + duplicates + wrong-company)
+2. Ask: "The consolidated brief is uploaded and verified. Ready to delete these {N} old
+   sources? (y/n)"
+3. On confirmation: delete each source via `notebooklm source delete {source_id}`
+4. If any deletion fails mid-batch: log the failed ID, continue with remaining deletions,
+   report "Deleted {N}/{total}. Failed: {list}" at end. If auth expired mid-batch, re-auth
+   via `/vnc-service:run` and retry failed deletions.
 
 Report:
 ```

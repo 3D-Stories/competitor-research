@@ -65,20 +65,59 @@ If headless:
 ### Setup Step 3: NotebookLM CLI
 
 1. Check: `notebooklm --version`
-2. If missing: install from PyPI and register the skill:
+2. If missing, install via **pipx** (not pip — modern Ubuntu/Debian use PEP 668 which blocks
+   direct pip install into the system Python):
    ```bash
-   pip install notebooklm-py
+   # Install the CLI
+   pipx install notebooklm-py
+
+   # Inject Playwright (needed for browser-based auth and source management)
+   pipx inject notebooklm-py playwright
+
+   # Install Chromium browser for Playwright (must use the venv's playwright binary)
+   # Find the actual venv path:
+   pipx list  # Look for the notebooklm-py venv location
+   # Then install chromium using that path:
+   $(pipx environment --value PIPX_LOCAL_VENVS)/notebooklm-py/bin/playwright install chromium
+   ```
+
+   Then install the Claude Code skill and reload:
+   ```bash
    notebooklm skill install
    ```
-   Then reload plugins so the session picks up the new notebooklm skill:
    ```
    /reload-plugins
    ```
+
 3. Check: `notebooklm status` for auth
 4. If not authenticated:
-   - If headless: invoke `/vnc-service:run`, then `DISPLAY=:99 notebooklm login`
-   - If graphical: `notebooklm login` directly
-   - Wait for user to complete OAuth in browser/VNC
+   - If headless: invoke `/vnc-service:run`, then run login with DISPLAY=:99
+   - If graphical: run login directly
+
+   **Important:** The `notebooklm login` command opens a browser and waits for ENTER after
+   OAuth completes. When running from Claude Code's Bash tool, stdin sends EOF immediately
+   which aborts the login. Use this pattern instead:
+
+   ```bash
+   # Poll-based login: keeps process alive until auth file appears, then auto-confirms
+   (while [ ! -f ~/.notebooklm/storage_state.json ] || \
+     [ $(( $(date +%s) - $(stat -c %Y ~/.notebooklm/storage_state.json) )) -gt 10 ]; do \
+     sleep 2; done; sleep 3; echo "") | notebooklm login
+   ```
+
+   This polls for the auth file to be written/updated, waits 3 seconds for it to finalize,
+   then sends ENTER automatically. No fixed timeout — completes as soon as the user finishes
+   OAuth.
+
+   For headless servers, prefix with `DISPLAY=:99`:
+   ```bash
+   (while [ ! -f ~/.notebooklm/storage_state.json ] || \
+     [ $(( $(date +%s) - $(stat -c %Y ~/.notebooklm/storage_state.json) )) -gt 10 ]; do \
+     sleep 2; done; sleep 3; echo "") | DISPLAY=:99 notebooklm login
+   ```
+
+   Tell the user: "Complete OAuth in the browser. The login will auto-confirm once done."
+
 5. Verify: `notebooklm status` shows authenticated
 
 ### Setup Step 4: Google AI Mode MCP

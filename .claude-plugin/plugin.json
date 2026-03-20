@@ -1,7 +1,7 @@
 {
   "name": "competitor-research",
-  "version": "0.2.0",
-  "description": "Comprehensive competitor research pipeline — pulls NotebookLM sources, web research via Google AI Mode, and produces curated market briefs with critique review.",
+  "version": "0.2.1",
+  "description": "Comprehensive competitor research pipeline \u2014 pulls NotebookLM sources, web research via Google AI Mode, and produces curated market briefs with critique review.",
   "author": {
     "name": "3D-Stories",
     "url": "https://github.com/3D-Stories"

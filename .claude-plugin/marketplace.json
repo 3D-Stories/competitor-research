@@ -9,7 +9,7 @@
     {
       "name": "competitor-research",
       "description": "Comprehensive competitor research pipeline with NotebookLM integration and Google AI Mode web research.",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "source": "./",
       "author": {
         "name": "3D-Stories",

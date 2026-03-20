@@ -132,7 +132,12 @@ If headless:
 
    Inform user: "Google AI Mode MCP installed. You'll need to **restart the session** for the
    MCP server to initialize. MCP servers only load at session start."
-   **Stop and wait for session restart.**
+   **HARD STOP — Do NOT proceed to Step 5 or any later step.** Steps 5-7 require the MCP
+   server to be running, which only happens after a session restart. If you skip ahead, the
+   user will be asked setup questions out of order and the config file will be written before
+   MCP is verified. Tell the user to restart and re-run `/competitor-research setup` — it will
+   detect that Steps 1-3 are already complete and resume from Step 4 verification.
+
 3. If present: test with a simple search:
    ```
    mcp__google-ai-search__search_ai(query="test", headless=true)

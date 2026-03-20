@@ -206,20 +206,29 @@ Check for critique tools in priority order:
 2. **reflexion:critique** — check if available in skills list.
    If available: use as critique tool.
 
-3. **Neither found** — offer to install reflexion:
+3. **Neither found** — offer to install a critique tool. BMAD is preferred:
    ```
-   No critique tool found. Would you like to install reflexion?
-   This provides multi-judge quality review for briefs.
+   No critique tool found. Which would you like to install?
 
-   Install now? (y/n)
+   1. BMAD Method (Recommended) — multi-agent party mode with specialized personas
+      (analyst, architect, PM, QA, tech writer) for interactive review
+   2. Reflexion — multi-judge review with consensus building
+   3. Skip — use basic self-critique (always available)
    ```
-   If yes, install via Bash:
+
+   **If BMAD chosen:** Install via Bash:
+   ```bash
+   npx bmad-method install
+   ```
+   After install, re-run the BMAD detection search to find the installed path.
+   Store `bmad_path` in config.
+
+   **If Reflexion chosen:** Install via Bash:
    ```bash
    claude plugin marketplace add NeoLabHQ/context-engineering-kit
    claude plugin install reflexion@NeoLabHQ/context-engineering-kit
    ```
    Then tell user: "Run `/reload-plugins` to activate reflexion."
-   ```
 
 4. **Self-critique** as last resort — always available, no install needed.
 

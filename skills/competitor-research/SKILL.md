@@ -142,7 +142,23 @@ If headless:
    ```
    mcp__google-ai-search__search_ai(query="test", headless=true)
    ```
-4. If CAPTCHA is required:
+
+4. If the test search fails with **"Chromium distribution 'chrome' is not found"**:
+   Chrome/patchright browser is not installed. Tell the user:
+   ```
+   The Google AI Mode MCP needs Chrome installed. Run this in a separate terminal
+   (Claude Code cannot handle interactive sudo):
+
+     sudo npx patchright install chrome
+
+   Note: `apt install google-chrome-stable` does NOT work — it's not in default Ubuntu repos.
+   The patchright installer downloads the correct Chromium build.
+
+   Let me know when it's done and I'll retry the test search.
+   ```
+   Wait for user confirmation, then retry the test search.
+
+5. If the test search fails with **CAPTCHA required**:
    - Invoke `/vnc-service:run` for connection info
    - Retry with `headless: false` so browser renders on VNC display
    - User solves CAPTCHA in VNC

@@ -489,22 +489,53 @@ Write files 01 through 10, then:
 **Run BEFORE deleting NotebookLM sources** — if the critique finds fatal flaws, we still have
 the original sources to work with.
 
-Use the critique tool from config:
+**Read `critique_tool` from config. Use ONLY the configured tool. Do NOT substitute.**
 
-1. **BMAD Party Mode** (if bmad_path configured): Read the agent manifest at
-   `{bmad_path}/_config/agent-manifest.csv` and orchestrate a multi-agent review
-   focusing on: factual accuracy, source quality, analytical rigor, completeness,
-   and actionability.
+**If critique_tool = "bmad":**
 
-2. **reflexion:critique**: Invoke with the full brief path and evaluation criteria.
+You MUST invoke BMAD Party Mode. Do NOT use reflexion:critique or self-critique instead.
 
-3. **Self-critique**: Re-read the brief and evaluate against: factual accuracy, source quality,
-   completeness, analytical rigor, actionability, bias check.
+1. Read the agent manifest at `{bmad_path}/_config/agent-manifest.csv`
+2. Read the BMAD config at `{bmad_path}/../_bmad/core/config.yaml` (or the parent dir
+   containing `core/config.yaml`)
+3. Read the party mode workflow at `{bmad_path}/../_bmad/core/skills/bmad-party-mode/workflow.md`
+4. Follow the workflow.md instructions to activate party mode:
+   - Load agent roster from the manifest
+   - Welcome the user with agent introductions
+   - Select 3-5 relevant agents for the review (prioritize: Analyst/Mary, Architect/Winston,
+     Tech Writer/Paige, PM/John, QA/Quinn — or their equivalents in the manifest)
+   - Orchestrate an **interactive** multi-agent discussion about the brief
+   - The topic is: "Review the competitor market brief at {path_to_full_brief}.
+     Evaluate for: factual accuracy, source quality, analytical rigor, completeness
+     across all 10 sections, and actionability for both investor pitch and product strategy."
+   - Let the user participate in the discussion — this is interactive, not a batch report
+5. After the discussion concludes, summarize findings and action items
+
+**If critique_tool = "reflexion":**
+
+Invoke `/reflexion:critique` with:
+```
+Review the competitor market brief at {path_to_full_brief}.
+Evaluate for: factual accuracy, source quality, analytical rigor,
+completeness across all 10 sections, and actionability for both
+investor pitch and product strategy contexts.
+```
+
+**If critique_tool = "self":**
+
+Re-read the full brief and evaluate against: factual accuracy, source quality,
+completeness, analytical rigor, actionability, bias check. Write a 5-10 bullet
+point critique and present to the user.
 
 **After critique:** If significant issues found, offer to revise affected sections.
 Regenerate the combined file if revisions are made.
 
-**Checkpoint:** Critique complete. Brief finalized.
+**Checkpoint:** Report which critique tool was used:
+```
+Critique completed using: {actual_tool_used} (configured: {config_value})
+```
+If actual_tool_used differs from config_value, explain why (e.g., "BMAD not found at
+configured path — fell back to self-critique"). Brief finalized.
 
 ### Step 8: Upload Consolidated Brief FIRST
 

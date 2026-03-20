@@ -58,15 +58,14 @@ fi
 If headless:
 1. Check if `/vnc-service:setup` skill is available in the skills list
 2. If available: invoke `/vnc-service:setup` to install and configure the virtual display + VNC
-3. If NOT available: guide the user to install the vnc-service plugin:
+3. If NOT available: install the vnc-service plugin automatically via Bash:
+   ```bash
+   claude plugin marketplace add 3D-Stories/vnc-service
+   claude plugin install vnc-service@vnc-service
    ```
-   The vnc-service plugin is required for headless browser interactions but is not installed.
-   Install it now:
-
-   /plugin marketplace add 3D-Stories/vnc-service
-   /plugin install vnc-service@vnc-service
-   /reload-plugins
-   ```
+   Then tell the user: "vnc-service plugin installed. Run `/reload-plugins` to activate it."
+   (`/reload-plugins` is a session command that must be run by the user — it cannot be
+   called from Bash.)
    After reload, verify `/vnc-service:setup` is now in the available skills list.
    Then invoke `/vnc-service:setup`.
 4. After setup, invoke `/vnc-service:run` to ensure it's running and get connection info
@@ -133,9 +132,9 @@ If headless:
 ### Setup Step 4: Google AI Mode MCP
 
 1. Check if `mcp__google-ai-search__search_ai` is in the available tools list
-2. If missing: install the MCP server using the session `/mcp` command:
-   ```
-   /mcp add google-ai-search npx google-ai-mode-mcp@latest
+2. If missing: install the MCP server via Bash:
+   ```bash
+   claude mcp add google-ai-search npx google-ai-mode-mcp@latest
    ```
    Note: Do NOT use `xvfb-run` wrapper — use the persistent display from `/vnc-service:setup`.
    The MCP server will use `DISPLAY=:99` from the environment.
@@ -212,12 +211,14 @@ Check for critique tools in priority order:
    No critique tool found. Would you like to install reflexion?
    This provides multi-judge quality review for briefs.
 
-   Install commands (run in session):
-     /plugin marketplace add NeoLabHQ/context-engineering-kit
-     /plugin install reflexion@NeoLabHQ/context-engineering-kit
-     /reload-plugins
-
    Install now? (y/n)
+   ```
+   If yes, install via Bash:
+   ```bash
+   claude plugin marketplace add NeoLabHQ/context-engineering-kit
+   claude plugin install reflexion@NeoLabHQ/context-engineering-kit
+   ```
+   Then tell user: "Run `/reload-plugins` to activate reflexion."
    ```
 
 4. **Self-critique** as last resort — always available, no install needed.

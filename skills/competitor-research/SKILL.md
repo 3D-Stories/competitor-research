@@ -214,22 +214,35 @@ Check for critique tools in priority order:
 
 ### Setup Step 7: Save Configuration
 
-Save all configuration to `~/.config/competitor-research/config.json`:
+Save all configuration to `~/.config/competitor-research/config.json`.
+
+The config supports **named profiles** for users researching competitors across multiple
+projects or notebooks. Setup creates a `default` profile. Users can add more by re-running
+setup or manually editing the config.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "created_at": "ISO timestamp",
   "updated_at": "ISO timestamp",
   "headless": true,
-  "notebook_id": "uuid",
-  "notebook_title": "name",
   "critique_tool": "bmad|reflexion|self",
   "bmad_path": "/home/user/bmad/_bmad",
   "mcp_installed": true,
-  "vnc_configured": true
+  "vnc_configured": true,
+  "default_profile": "chorestory",
+  "profiles": {
+    "chorestory": {
+      "notebook_id": "uuid",
+      "notebook_title": "ChoreStory Investor Research",
+      "project_path": "/home/user/projects/chorestory_business"
+    }
+  }
 }
 ```
+
+Global settings (headless, critique_tool, mcp_installed, vnc_configured) are shared across
+profiles. Per-profile settings are notebook_id, notebook_title, and project_path.
 
 ```bash
 mkdir -p ~/.config/competitor-research
@@ -366,21 +379,39 @@ Execute these steps in order. Each step has a clear checkpoint before proceeding
 3. If present: quick validation (notebooklm status, MCP available)
 4. Load config values (notebook_id, critique_tool, bmad_path, etc.)
 
-### Step 2: Disambiguation & Directory Setup
+### Step 2: Profile, Notebook & Directory Setup
 
-1. Confirm the competitor name with the user
-2. If the name is ambiguous, ask the user to clarify which company/product
-3. Ask for **domain keywords** (or infer from name): "Any specific search terms for this
+1. **Select profile:** Load the default profile from config. If multiple profiles exist,
+   or if the user's current context doesn't match the default, ask:
+   ```
+   Using profile: "chorestory" (notebook: ChoreStory Investor Research)
+   Use this profile, or switch? Available profiles: chorestory, [other...]
+   Or: create a new profile for this research
+   ```
+   If no profile matches the current work, create a new one inline (ask for notebook + path).
+
+2. **Verify notebook:** Set NotebookLM context to the profile's notebook:
+   `notebooklm use {profile.notebook_id}`
+   If the notebook no longer exists (deleted or shared access revoked), ask the user to
+   pick a new one and update the profile.
+
+3. **Verify project path:** Check if `{profile.project_path}` exists on disk.
+   If not set or missing: ask the user for the output base directory.
+   If the active rawgentic project path is detected and differs from the profile,
+   ask: "Use {rawgentic_path} or {profile.project_path}?"
+
+4. Confirm the competitor name with the user
+5. If the name is ambiguous, ask the user to clarify which company/product
+6. Ask for **domain keywords** (or infer from name): "Any specific search terms for this
    competitor's market? (e.g., 'kids fintech debit card' for Greenlight)"
-4. Suggest output directory, let user override:
+7. Suggest output directory, let user override:
    ```
    Output: {project_path}/competitors/{competitor_name}/
    Change? (Enter path or press Enter to accept)
    ```
-5. Create directory structure: `{output_dir}/raw/notebooklm/` and `{output_dir}/raw/web/`
-6. Confirm NotebookLM notebook context is set (from config)
+8. Create directory structure: `{output_dir}/raw/notebooklm/` and `{output_dir}/raw/web/`
 
-**Checkpoint:** Directory exists, notebook context confirmed, competitor unambiguous, domain keywords set.
+**Checkpoint:** Profile loaded, notebook context set, directory exists, competitor unambiguous, domain keywords set.
 
 ### Step 3: Pull Existing NotebookLM Sources
 

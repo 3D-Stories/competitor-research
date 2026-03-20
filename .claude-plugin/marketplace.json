@@ -1,8 +1,14 @@
 {
+  "name": "competitor-research",
+  "owner": {
+    "name": "3D-Stories",
+    "url": "https://github.com/3D-Stories"
+  },
   "plugins": [
     {
       "name": "competitor-research",
-      "path": "."
+      "source": ".",
+      "description": "Comprehensive competitor research pipeline with NotebookLM integration and Google AI Mode web research"
     }
   ]
 }

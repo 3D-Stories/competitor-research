@@ -41,6 +41,20 @@ Then invoke the setup workflow below. Do NOT proceed with research until setup c
 
 Run this once to configure all dependencies. Can also be re-run to reconfigure.
 
+### Setup Step 0: Node.js & npm
+
+Check if Node.js and npm are installed (required for MCP servers and npx commands):
+
+```bash
+if ! command -v node >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
+  echo "Node.js and npm are required but not installed. Installing..."
+  sudo apt-get install -y nodejs npm
+fi
+node --version && npx --version
+```
+
+If sudo is unavailable, tell the user to install Node.js manually.
+
 ### Setup Step 1: Environment Detection
 
 ```bash

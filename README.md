@@ -33,6 +33,11 @@ walks through 7 steps and saves configuration to `~/.config/competitor-research/
 If you skip setup and run `/competitor-research <name>` directly, the skill auto-detects
 the missing config and runs setup automatically before proceeding.
 
+### Step 0: Node.js & npm
+
+Checks if Node.js and npm are installed (required for MCP servers and npx commands).
+If missing: `sudo apt-get install -y nodejs npm`
+
 ### Step 1: Environment Detection
 
 Checks for a graphical display (`$DISPLAY` + `xdpyinfo`). If headless, flags that VNC will

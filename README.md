@@ -35,8 +35,8 @@ the missing config and runs setup automatically before proceeding.
 
 ### Step 0: Node.js & npm
 
-Checks if Node.js and npm are installed (required for MCP servers and npx commands).
-If missing: `sudo apt-get install -y nodejs npm`
+Checks if Node.js v20+ and npm are installed (required for MCP servers and npx commands).
+If missing or too old: installs latest LTS via NodeSource (`curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -`)
 
 ### Step 1: Environment Detection
 

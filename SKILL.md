@@ -41,19 +41,30 @@ Then invoke the setup workflow below. Do NOT proceed with research until setup c
 
 Run this once to configure all dependencies. Can also be re-run to reconfigure.
 
-### Setup Step 0: Node.js & npm
+### Setup Step 0: Node.js & npm (v20+)
 
-Check if Node.js and npm are installed (required for MCP servers and npx commands):
+Check if Node.js v20+ and npm are installed (required for MCP servers and npx commands):
 
 ```bash
-if ! command -v node >/dev/null 2>&1 || ! command -v npx >/dev/null 2>&1; then
-  echo "Node.js and npm are required but not installed. Installing..."
-  sudo apt-get install -y nodejs npm
+if command -v node >/dev/null 2>&1; then
+  NODE_VER=$(node --version | sed 's/v//' | cut -d. -f1)
+  if [ "$NODE_VER" -ge 20 ]; then
+    echo "Node.js v$(node --version) OK"
+  else
+    echo "Node.js v$(node --version) is too old (need v20+). Upgrading..."
+    # Install latest LTS via NodeSource
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  fi
+else
+  echo "Node.js not installed. Installing latest LTS..."
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+  sudo apt-get install -y nodejs
 fi
 node --version && npx --version
 ```
 
-If sudo is unavailable, tell the user to install Node.js manually.
+If sudo is unavailable, tell the user to install Node.js v20+ manually (https://nodejs.org).
 
 ### Setup Step 1: Environment Detection
 

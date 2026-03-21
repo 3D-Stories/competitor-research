@@ -195,20 +195,72 @@ profiles. Per-profile settings are notebook_id, notebook_title, and project_path
 
 Example: `/competitor-research Greenlight`
 
+Example (multiple): `/competitor-research Finch, Greenlight, BusyKid`
+
+When multiple names are provided, runs in parallel mode.
+
 ### Inputs
 
 | Input | Required | Description | Example |
 |-------|----------|-------------|---------|
-| **Competitor name** | Yes | The company or product to research | `Greenlight`, `Finch`, `BusyKid` |
+| **Competitor name(s)** | Yes | The company or product to research (comma-separated for multiple; commas required for multi-word names like `Hello Fresh, Greenlight`) | `Greenlight`, `Finch, Greenlight, BusyKid` |
 | **Domain keywords** | No | Additional search terms for the competitor's market. Inferred from name if not provided. | `kids fintech debit card banking` |
 | **Product clarifier** | No | Disambiguation when a name is ambiguous. The skill asks if unclear. | `Finch self-care app` vs `Finch payroll API` |
 | **Notebook ID** | No | Defaults to the notebook configured during setup | UUID from NotebookLM |
 | **Project path** | No | Defaults to active rawgentic project path | `/home/user/my-project` |
 
-### Multiple Competitors
+### Parallel Mode
 
-Run one at a time. The skill suggests processing order (heaviest source count first to free
-NotebookLM slots early). Each competitor reuses the same config from setup.
+When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
+
+**Phase 1: Shared Setup + CAPTCHA Pre-Warming (interactive)**
+- Prerequisites check and profile/notebook verification run once
+- Each competitor is disambiguated with domain keywords
+- User confirms all competitors before agents launch
+- CAPTCHA pre-warming: a test search runs before spawning agents to clear any CAPTCHA
+  cookie, so agents can search without hitting it
+
+**Phase 2: Parallel Research (concurrent agents)**
+- All agents spawn in a single message and run concurrently
+- The orchestrator blocks until ALL agents complete (no incremental notification --
+  this is how Claude Code's Agent tool works)
+- Each agent prompt is fully self-contained: includes competitor name, domain keywords,
+  output directory, notebook ID, current year, complete section definitions,
+  notebooklm use command, available tools list, and .status.json protocol
+- Web searches queue through the shared MCP browser (sequential but fast);
+  analysis and writing are truly parallel
+- Each agent writes to its own output directory -- no file conflicts
+- CAPTCHA in agents: if triggered, the agent writes a `.captcha_blocked` marker file
+  and skips remaining searches. The main session backfills after all agents complete.
+
+**Phase 3: Sequential Completion (interactive)**
+- Processes ALL competitors after ALL agents complete (not first-done)
+- For each competitor, reads `.status.json` and runs Steps 7-9:
+  - Critique using configured tool (BMAD/reflexion/self)
+  - Upload consolidated brief to NotebookLM
+  - Clean up old sources (with user confirmation)
+- For 3+ competitors with BMAD critique: offers a batch option -- self-critique all briefs
+  first, then BMAD deep-dive on the weakest. Avoids N interactive party mode sessions.
+
+**Error Recovery**
+- Reads `.status.json` per competitor to determine which step failed
+- Partial failures (e.g., Steps 3-4 done, 5-6 failed): offers to run remaining steps
+  from the main session using existing raw files
+- Missing `.status.json` (agent timeout): informs user, offers manual completion
+- CAPTCHA-blocked agents: resolves CAPTCHA interactively, backfills missing searches
+
+Progress tracking:
+```
+Competitor Research Progress:
+  ● Finch        — Steps 3-6 running (agents active, waiting for all to complete)
+  ● Greenlight   — Steps 3-6 running
+  ● BusyKid      — Steps 3-6 running
+  ---
+  All agents complete. Processing Steps 7-9:
+  ✓ Finch        — Steps 7-9 done
+  ● Greenlight   — Step 7 (critique) in progress
+  ○ BusyKid      — Pending
+```
 
 ## Pipeline (9 Steps)
 
@@ -226,6 +278,8 @@ NotebookLM slots early). Each competitor reuses the same config from setup.
 
 Key ordering: critique runs BEFORE delete (Step 7 before 9), upload runs BEFORE delete
 (Step 8 before 9). This ensures no data loss if critique finds fatal flaws or upload fails.
+
+In parallel mode, Steps 3-6 run concurrently across all competitors via background agents. Steps 7-9 run sequentially in the main session.
 
 ## Output Structure
 
@@ -316,7 +370,13 @@ from Bash.
 
 ## Version History
 
-- **0.3.5** -- Current release. Added Playwright system dependency install step (`playwright install-deps chromium`).
+- **0.4.0** -- Current release. Parallel mode rewrite: CAPTCHA pre-warming in Phase 1, self-contained
+  agent prompts with full section definitions and .status.json protocol, orchestrator blocks until all
+  agents complete (no incremental notification), CAPTCHA-blocked agents write marker files for main
+  session backfill, Phase 3 processes all competitors after all agents finish with batch critique option
+  (self-critique all + BMAD deep-dive on weakest) for 3+ competitors, structured error recovery via
+  .status.json. Inputs now require comma separation for multi-word competitor names.
+- **0.3.5** -- Added Playwright system dependency install step (`playwright install-deps chromium`).
   Replaced poll-based login with two-step background/save pattern. Added orphan process cleanup guidance.
 - **0.3.4** -- Previous release.
 - **0.3.x** -- Incremental fixes and refinements to the pipeline, setup flow, and error handling.

@@ -333,11 +333,14 @@ Run /competitor-research <name> to start researching.
 ## Input
 
 The skill accepts:
-- **Competitor name** (required) — e.g., "Finch", "Greenlight", "BusyKid"
-- **Domain keywords** (optional) — additional search terms specific to this competitor's market,
-  e.g., "kids fintech debit card banking" for Greenlight, "gamified wellness self-care mental health"
-  for Finch. If not provided, the skill will infer domain keywords from the competitor name and
-  initial source analysis.
+- **Competitor name(s)** (required) — one or multiple names, **comma-separated**, e.g.:
+  - Single: `Finch`
+  - Multiple: `Finch, Greenlight, BusyKid`
+  Comma separation is required for multi-word names (e.g., `Hello Fresh, Greenlight`).
+  When multiple names are provided, the skill runs in **parallel mode** (see below).
+- **Domain keywords** (optional) — additional search terms specific to each competitor's market.
+  When running multiple competitors, the skill asks for domain keywords per competitor during
+  the disambiguation step, or infers them from the names.
 - **Notebook ID** (optional) — defaults to configured notebook from setup
 - **Project path** (optional) — defaults to active rawgentic project path
 - **Product clarifier** (optional) — disambiguation when a company name is ambiguous,
@@ -470,18 +473,35 @@ Execute these steps in order. Each step has a clear checkpoint before proceeding
    If the active rawgentic project path is detected and differs from the profile,
    ask: "Use {rawgentic_path} or {profile.project_path}?"
 
-4. Confirm the competitor name with the user
-5. If the name is ambiguous, ask the user to clarify which company/product
-6. Ask for **domain keywords** (or infer from name): "Any specific search terms for this
-   competitor's market? (e.g., 'kids fintech debit card' for Greenlight)"
-7. Suggest output directory, let user override:
-   ```
-   Output: {project_path}/competitors/{competitor_name}/
-   Change? (Enter path or press Enter to accept)
-   ```
-8. Create directory structure: `{output_dir}/raw/notebooklm/` and `{output_dir}/raw/web/`
+4. **Parse competitor names:** Split input by commas. Trim whitespace from each name.
+   Build a list of competitors to process. Single names without commas = one competitor.
 
-**Checkpoint:** Profile loaded, notebook context set, directory exists, competitor unambiguous, domain keywords set.
+5. **For each competitor in the list:**
+   a. Confirm the competitor name with the user
+   b. If the name is ambiguous, ask for clarification (product clarifier)
+   c. Ask for **domain keywords** (or infer): "Domain keywords for {name}?"
+   d. Suggest output directory: `{project_path}/competitors/{competitor_name}/`
+   e. Create directory structure: `{output_dir}/raw/notebooklm/` and `{output_dir}/raw/web/`
+
+   For multiple competitors, present all at once for confirmation:
+   ```
+   Competitors to research:
+     1. Finch (self-care pet app) — keywords: gamified wellness self-care
+        Output: ./competitors/finch/
+     2. Greenlight (kids debit card) — keywords: kids fintech debit card
+        Output: ./competitors/greenlight/
+     3. BusyKid (chore + fintech) — keywords: kids chores allowance
+        Output: ./competitors/busykid/
+
+   Confirm all, or modify any? (confirm / modify #)
+   ```
+
+6. **Determine execution mode:**
+   - If 1 competitor: proceed with single-competitor pipeline (Steps 3-9)
+   - If 2+ competitors: proceed with **parallel mode** (see "Parallel Mode" section)
+
+**Checkpoint:** Profile loaded, notebook context set, all competitors disambiguated with
+domain keywords, directories created, execution mode determined.
 
 ### Step 3: Pull Existing NotebookLM Sources
 
@@ -638,10 +658,189 @@ Status: ready
 NotebookLM sources: was {old_count}, now {new_count} (freed {delta} slots)
 ```
 
-## Running for Multiple Competitors
+## Parallel Mode (Multiple Competitors)
 
-Suggest processing one at a time, ordered by source count (heaviest first to free slots early).
-Each competitor reuses the same config from setup.
+When multiple competitor names are provided, the skill uses a **fan-out / fan-in** pattern:
+
+### Phase 1: Shared Setup + CAPTCHA Pre-Warming (main session)
+
+1. Run Step 1 (Prerequisites) once — shared across all competitors
+2. Run Step 2 (Profile, Notebook & Directory) for each competitor sequentially:
+   - Confirm/disambiguate each competitor name
+   - Collect domain keywords for each
+   - Create output directories for each
+   - This is interactive, so it runs in the main session
+3. **CAPTCHA pre-warming** — before spawning agents, run one test search from the main session:
+   ```
+   mcp__google-ai-search__search_ai(query="test", headless=true)
+   ```
+   If CAPTCHA triggers: invoke `/vnc-service:run`, retry with `headless: false`, user solves
+   in VNC, then verify headless works. This clears the CAPTCHA cookie so agents can search
+   without hitting it. The MCP browser is shared — one successful session benefits all agents.
+
+### Phase 2: Parallel Research (concurrent agents)
+
+Spawn all competitor agents in a **single message** using multiple Agent tool calls.
+The Agent tool runs them concurrently, but the orchestrator **blocks until ALL agents complete**
+(there is no incremental notification — this is how Claude Code's Agent tool works).
+
+For each competitor, the agent prompt must be **fully self-contained** — agents do not inherit
+skill context. The prompt must include:
+
+- The competitor name, product clarifier, and domain keywords
+- The output directory path
+- The NotebookLM notebook ID
+- The current year (for web search queries)
+- The complete section definitions (copied from this skill, not a placeholder)
+- A `notebooklm use {notebook_id}` command as the first step
+- Instructions for Steps 3-6 only
+- A `.status.json` file protocol for error reporting
+
+**Agent prompt template** (instantiate per competitor, replacing all `{placeholder}` values):
+
+```
+You are researching competitor "{competitor_name}" ({product_clarifier}).
+Domain keywords: {domain_keywords}
+Output directory: {output_dir}
+NotebookLM notebook ID: {notebook_id}
+Current year: {current_year}
+
+Available tools: Bash, Read, Write, Edit, Glob, Grep, mcp__google-ai-search__search_ai
+Do NOT run Steps 7-9 (critique, upload, delete). Only Steps 3-6.
+
+FIRST: Set NotebookLM context:
+  notebooklm use {notebook_id}
+
+STEP 3: Pull NotebookLM Sources
+- Run: notebooklm source list --json
+- Filter for sources matching "{competitor_name}" (case-insensitive) in title or URL
+- For each match, run: notebooklm source fulltext {source_id} --json
+- Save to {output_dir}/raw/notebooklm/{source_id_first8chars}.md with YAML header
+- Track source IDs in {output_dir}/raw/notebooklm/_metadata.json
+- Note which sections have strong data vs gaps
+- Update {output_dir}/.status.json: {"step": 3, "completed": true}
+
+STEP 4: Web Research
+- Use mcp__google-ai-search__search_ai for these queries:
+  1. "{competitor_name} {domain_keywords} company overview founding team funding {current_year}"
+  2. "{competitor_name} {domain_keywords} revenue users downloads metrics {current_year}"
+  3. "{competitor_name} {domain_keywords} pricing subscription model {current_year}"
+  4. "{competitor_name} {domain_keywords} reviews user sentiment Reddit {current_year}"
+  5. "{competitor_name} {domain_keywords} competitors market position {current_year}"
+- Save results to {output_dir}/raw/web/search-{topic}.md
+- If CAPTCHA: write "captcha" to {output_dir}/.captcha_blocked and skip remaining
+  searches. Do NOT retry — the main session will handle CAPTCHA resolution.
+- Update {output_dir}/.status.json: {"step": 4, "completed": true, "searches_completed": N,
+  "captcha_blocked": true/false}
+
+STEP 5: Analyze & Verify
+- Read ALL raw sources (both NotebookLM and web)
+- Flag wrong-company sources (common with similar names)
+- Cross-reference conflicting data between sources
+- Check data freshness (flag >12 months old)
+- Identify section gaps
+- Update {output_dir}/.status.json: {"step": 5, "completed": true}
+
+STEP 6: Write Section Files
+Each section file follows this template:
+# {Section Title}
+> Competitor: {name} | Last Updated: {date} | Confidence: {high/medium/low}
+{Content with citations [S#-N]}
+---
+*Sources: See 10-sources-and-data-quality.md for full citation list*
+
+Section definitions:
+S1 Company Overview: founding, HQ, team, leadership, mission, positioning
+S2 Funding & Financials: rounds, valuation, revenue, burn rate. Flag same-name company confusion.
+S3 Product & Features: features by category, platforms, UX, recent launches, tech signals
+S4 Pricing & Monetization: exact prices, tiers, free vs paid, ARPU
+S5 User Base & Traction: downloads, DAU/MAU, ratings, growth, geo. Label single-source estimates.
+S6 Target Market & Positioning: demographics, segments, brand voice, marketing, TAM if available
+S7 User Sentiment: top 3 loves, top 3 complaints, churn signals, 3-5 verbatim quotes
+S8 Strengths & Weaknesses: SWOT relative to user's product (note: vision, not shipped product)
+S9 Threat Assessment: direct/indirect, moats, scenarios, strategic response
+S10 Sources & Data Quality: citations, quality tiers, wrong-company exclusions, conflict log
+
+Guidelines: be specific ($35M not "significant"), cite everything, state confidence,
+note unknowns honestly, 300-800 words per section.
+
+- Write 01-10 section files
+- Write 00-index.md with executive summary and reading paths
+- Write {competitor_name}-full-brief.md (combined)
+- Update {output_dir}/.status.json: {"step": 6, "completed": true, "word_count": N,
+  "sections_written": 10}
+
+FINAL STATUS: Write complete {output_dir}/.status.json:
+{"competitor": "{competitor_name}", "completed": true, "steps_completed": [3,4,5,6],
+ "word_count": N, "sections_written": 10, "captcha_blocked": false,
+ "errors": [], "started_at": "ISO", "finished_at": "ISO"}
+```
+
+**Important constraints:**
+- Agents share the same MCP server — web searches queue through one browser, not truly
+  parallel. The analysis and writing steps ARE truly parallel.
+- Agents share the same NotebookLM session — source list calls may interleave but this is
+  safe (read-only). Each agent must call `notebooklm use {notebook_id}` first to set context.
+  This writes to a shared config file but is idempotent (same notebook ID for all agents).
+- Each agent writes to its own `{output_dir}` — no file conflicts.
+- No agent should delete or upload NotebookLM sources.
+
+### Phase 3: Sequential Completion (main session)
+
+After ALL agents complete (the orchestrator receives all results at once), process each
+competitor sequentially through Steps 7-9:
+
+1. **Check `.status.json`** for each competitor:
+   - If `completed: false` or file missing: agent failed. Offer to retry or complete manually.
+   - If `captcha_blocked: true`: CAPTCHA triggered during agent's web research. Resolve
+     CAPTCHA interactively (invoke `/vnc-service:run`), then run the missing searches from
+     the main session and re-analyze/rewrite affected sections.
+   - If `completed: true`: proceed to critique.
+
+2. **Step 7: Critique** — using the configured critique tool.
+   - For **3+ competitors with BMAD**: offer a batch option: "Run self-critique on all briefs
+     first, then BMAD deep-dive on the one that needs the most work? Or full BMAD on each?"
+     Running N interactive party mode sessions back-to-back is exhausting. Batch self-critique
+     + targeted BMAD deep-dive is more practical.
+   - For **reflexion or self-critique**: can process all competitors sequentially without
+     user fatigue.
+
+3. **Step 8: Upload** — upload each combined brief to NotebookLM
+
+4. **Step 9: Clean up** — delete old sources (with user confirmation, can batch: "Delete all
+   old sources for Finch, Greenlight, and BusyKid? (y/n)")
+
+### Progress Tracking
+
+Track and display status for the user:
+
+```
+Competitor Research Progress:
+  ● Finch        — Steps 3-6 running (agents active, waiting for all to complete)
+  ● Greenlight   — Steps 3-6 running
+  ● BusyKid      — Steps 3-6 running
+  ---
+  All agents complete. Processing Steps 7-9:
+  ✓ Finch        — Steps 7-9 done
+  ● Greenlight   — Step 7 (critique) in progress
+  ○ BusyKid      — Pending
+```
+
+### Error Recovery
+
+If an agent fails or produces partial output:
+
+1. Read `.status.json` to determine which step failed
+2. If Steps 3-4 completed but 5-6 failed: the raw data exists. Offer to run analysis
+   and writing from the main session using the existing raw files.
+3. If Step 3 failed (no sources pulled): offer to retry the agent or skip this competitor.
+4. If agent timed out (no `.status.json`): inform user, offer manual completion.
+
+### Fallback: Sequential Mode
+
+If the user prefers sequential processing (or if parallel agents are not available),
+fall back to processing one competitor at a time through the full 9-step pipeline.
+Order by NotebookLM source count (heaviest first to free slots early).
 
 ## Error Handling
 

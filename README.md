@@ -28,7 +28,7 @@ After installing, run `/competitor-research setup` to configure dependencies.
 ## Setup (`/competitor-research setup`)
 
 Run once to configure all dependencies. Can be re-run to reconfigure. The setup wizard
-walks through 7 steps and saves configuration to `~/.config/competitor-research/config.json`.
+walks through 8 steps and saves configuration to `~/.config/competitor-research/config.json`.
 
 If you skip setup and run `/competitor-research <name>` directly, the skill auto-detects
 the missing config and runs setup automatically before proceeding.
@@ -187,7 +187,7 @@ profiles. Per-profile settings are notebook_id, notebook_title, and project_path
 
 ## Project Context
 
-Step 3 of the pipeline gathers context about the user's own product so that competitor briefs
+Step 2 of the pipeline gathers context about the user's own product so that competitor briefs
 produce strategic comparisons rather than generic profiles. This grounds Sections 3 (Product &
 Features), 6 (Target Market & Positioning), 8 (Strengths & Weaknesses), and 9 (Threat
 Assessment) in actual product reality.
@@ -247,11 +247,9 @@ When multiple names are provided, runs in parallel mode.
 When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
 
 **Phase 1: Shared Setup + CAPTCHA Pre-Warming (interactive)**
-- Prerequisites check and profile/notebook verification run once
+- Prerequisites check, profile/notebook verification, and CAPTCHA pre-warming run once
 - Each competitor is disambiguated with domain keywords
 - User confirms all competitors before agents launch
-- CAPTCHA pre-warming: a test search runs before spawning agents to clear any CAPTCHA
-  cookie, so agents can search without hitting it
 
 **Phase 2: Parallel Research (concurrent agents)**
 - All agents spawn in a single message and run concurrently
@@ -268,7 +266,7 @@ When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
 
 **Phase 3: Sequential Completion (interactive)**
 - Processes ALL competitors after ALL agents complete (not first-done)
-- For each competitor, reads `.status.json` and runs Steps 8-10:
+- For each competitor, reads `.status.json` and runs Steps 7-9:
   - Critique using configured tool (BMAD/reflexion/self)
   - Upload consolidated brief to NotebookLM
   - Clean up old sources (with user confirmation)
@@ -277,7 +275,7 @@ When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
 
 **Error Recovery**
 - Reads `.status.json` per competitor to determine which step failed
-- Partial failures (e.g., Steps 4-5 done, 6-7 failed): offers to run remaining steps
+- Partial failures (e.g., Steps 3-4 done, 5-6 failed): offers to run remaining steps
   from the main session using existing raw files
 - Missing `.status.json` (agent timeout): informs user, offers manual completion
 - CAPTCHA-blocked agents: resolves CAPTCHA interactively, backfills missing searches
@@ -285,35 +283,34 @@ When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
 Progress tracking:
 ```
 Competitor Research Progress:
-  ● Finch        — Steps 4-7 running (agents active, waiting for all to complete)
-  ● Greenlight   — Steps 4-7 running
-  ● BusyKid      — Steps 4-7 running
+  ● Finch        — Steps 3-6 running (agents active, waiting for all to complete)
+  ● Greenlight   — Steps 3-6 running
+  ● BusyKid      — Steps 3-6 running
   ---
-  All agents complete. Processing Steps 8-10:
-  ✓ Finch        — Steps 8-10 done
-  ● Greenlight   — Step 8 (critique) in progress
+  All agents complete. Processing Steps 7-9:
+  ✓ Finch        — Steps 7-9 done
+  ● Greenlight   — Step 7 (critique) in progress
   ○ BusyKid      — Pending
 ```
 
-## Pipeline (10 Steps)
+## Pipeline (9 Steps)
 
 | Step | Name | What Happens |
 |------|------|-------------|
-| **1** | Prerequisites Check | Validates config exists. If missing, runs setup automatically. Quick-checks NotebookLM auth and MCP availability. |
-| **2** | Profile, Notebook & Directory Setup | Selects profile, verifies notebook context, confirms competitor name, collects domain keywords, creates output directory structure. |
-| **3** | Project Context Familiarization | Loads or creates project context (product name, audience, JTBD, differentiators, monetization, stage). Searches NotebookLM for project docs, offers quick briefing if none found, caches in config profile. Grounds Sections 3, 6, 8, 9 in actual product reality. |
-| **4** | Pull Existing NotebookLM Sources | Lists all sources, filters by competitor name + domain keywords. User confirms include/exclude. Pulls fulltext for each source. Performs quick section gap analysis to inform targeted web research. |
-| **5** | Web Research via Google AI Mode MCP | Runs 5 required searches (overview, traction, pricing, sentiment, market position) plus gap-targeted searches based on Step 4 analysis. Handles CAPTCHA via VNC. Saves results to `raw/web/`. |
-| **6** | Analyze & Verify | Reads all raw sources. Flags wrong-company data, cross-references facts, checks freshness (>12 months), identifies gaps, checks for AI search contamination from same-name companies. Reports conflicts to user. |
-| **7** | Write Section Files | Writes 10 section files (01-10), the index (00), and the combined full brief. Follows section templates with confidence headers and inline citations `[S#-N]`. |
-| **8** | Critique & Quality Review | **Runs BEFORE deleting NotebookLM sources** so originals remain if fatal flaws are found. Uses configured critique tool (BMAD / reflexion / self-critique). Offers to revise affected sections. Regenerates combined file if revisions are made. |
-| **9** | Upload Consolidated Brief | **Uploads BEFORE deleting old sources** to eliminate data loss window. Uploads combined brief to NotebookLM. Verifies it appears in source list. If upload fails, informs user of local path -- does NOT proceed to deletion. |
-| **10** | Clean Up NotebookLM Sources | Requires explicit user confirmation. Deletes old sources (unique + duplicates + wrong-company). Reports count freed. Handles mid-batch failures gracefully. |
+| **1** | Prerequisites, Profile & Directory Setup | Validates config, quick-checks NotebookLM auth and MCP, CAPTCHA pre-warming, selects profile, verifies notebook, confirms competitor names, collects domain keywords, checks for resume from partial runs, creates output directories. |
+| **2** | Project Context Familiarization | Loads or creates project context (product name, audience, JTBD, differentiators, monetization, stage). Searches NotebookLM for project docs, offers quick briefing if none found, caches in config profile. Grounds Sections 3, 6, 8, 9 in actual product reality. |
+| **3** | Pull Existing NotebookLM Sources | Lists all sources, filters by competitor name + domain keywords. User confirms include/exclude. Pulls fulltext for each source. Performs quick section gap analysis to inform targeted web research. |
+| **4** | Web Research via Google AI Mode MCP | Runs 5 required searches (overview, traction, pricing, sentiment, market position) plus gap-targeted searches based on Step 3 analysis. Handles CAPTCHA via VNC. Saves results to `raw/web/`. |
+| **5** | Analyze & Verify | Reads all raw sources. Flags wrong-company data, cross-references facts, checks freshness (>12 months), identifies gaps, checks for AI search contamination from same-name companies. Reports conflicts to user. |
+| **6** | Write Section Files | Writes 10 section files (01-10), the index (00), and the combined full brief. Follows section definitions from `references/section-definitions.md` with confidence headers and inline citations `[S#-N]`. |
+| **7** | Critique & Quality Review | **Runs BEFORE deleting NotebookLM sources** so originals remain if fatal flaws are found. Uses configured critique tool with graceful fallback cascade (configured → self-critique). Offers to revise affected sections. |
+| **8** | Upload Consolidated Brief | **Uploads BEFORE deleting old sources** to eliminate data loss window. Uploads combined brief to NotebookLM. Verifies it appears in source list. If upload fails, informs user of local path -- does NOT proceed to deletion. |
+| **9** | Clean Up NotebookLM Sources | Requires explicit user confirmation. Deletes old sources (unique + duplicates + wrong-company). Reports count freed. Handles mid-batch failures gracefully. |
 
-Key ordering: critique runs BEFORE delete (Step 8 before 10), upload runs BEFORE delete
-(Step 9 before 10). This ensures no data loss if critique finds fatal flaws or upload fails.
+Key ordering: critique runs BEFORE delete (Step 7 before 9), upload runs BEFORE delete
+(Step 8 before 9). This ensures no data loss if critique finds fatal flaws or upload fails.
 
-In parallel mode, Steps 4-7 run concurrently across all competitors via background agents. Steps 8-10 run sequentially in the main session.
+In parallel mode, Steps 3-6 run concurrently across all competitors via background agents. Steps 7-9 run sequentially in the main session.
 
 ## Output Structure
 
@@ -331,6 +328,7 @@ In parallel mode, Steps 4-7 run concurrently across all competitors via backgrou
 ├── 09-threat-assessment.md                  # Section 9
 ├── 10-sources-and-data-quality.md           # Section 10
 ├── {competitor_name}-full-brief.md          # Combined file (all sections, for NotebookLM)
+├── .status.json                             # Pipeline progress (for resume capability)
 └── raw/                                     # Raw source texts (for audit trail)
     ├── notebooklm/                          # Fulltexts pulled from NotebookLM
     │   ├── {source_id_short}.md
@@ -366,6 +364,21 @@ Each section file follows this template:
 | 8 | Strengths & Weaknesses | Pitch + Product | SWOT-style analysis. Honest assessment. Notes that user product comparisons reflect vision, not shipped product. |
 | 9 | Threat Assessment | Pitch | Direct/indirect/potential classification, defensive moats, threat scenarios, strategic response |
 | 10 | Sources & Data Quality | Pitch + Product | Full citation list, source quality tiers, wrong-company exclusions, data conflicts, per-section confidence |
+
+## Skill Architecture
+
+```
+skills/competitor-research/
+├── SKILL.md                                 # Main skill prompt (482 lines)
+└── references/
+    ├── setup.md                             # Setup wizard (loaded only during /competitor-research setup)
+    ├── section-definitions.md               # Single source of truth for 10 section definitions
+    └── agent-prompt-template.md             # Parallel agent prompt template (loaded only for parallel mode)
+```
+
+Section definitions are maintained in one place (`references/section-definitions.md`) and
+referenced by both the main workflow and parallel agent prompts. This prevents definition
+drift between single-competitor and parallel modes — a bug class that affected v0.5.0.
 
 ## Dependencies
 
@@ -404,12 +417,29 @@ from Bash.
 
 ## Version History
 
-- **0.5.0** -- Current release. Added Project Context Familiarization (Step 3) to ground competitor
+- **0.6.0** -- Current release. Major restructure driven by multi-agent critique review:
+  - **Architecture**: Extracted setup wizard, section definitions, and agent prompt template
+    to `references/` directory. SKILL.md reduced from 959 to 482 lines (under 500-line target).
+    Section definitions now maintained in single source of truth, preventing definition drift.
+  - **Bug fixes**: Fixed agent prompt template step numbering (was using pre-v0.5.0 numbers),
+    fixed all stale step cross-references (lines 500, 619, 635, 747, 937-939, 945 in v0.5.0),
+    resolved contradictory critique tool enforcement (now graceful fallback cascade instead of
+    strict-then-fallback contradiction), fixed BMAD path indirection.
+  - **Merged Steps 1+2**: Prerequisites Check and Profile/Notebook/Directory Setup merged into
+    a single Step 1. Pipeline is now 9 steps (was 10); parallel agents run Steps 3-6 (was 4-7),
+    sequential completion runs Steps 7-9 (was 8-10).
+  - **Resume capability**: `.status.json` written after each step in both single-competitor and
+    parallel pipelines. Detects partial completion and offers to resume from last completed step.
+  - **CAPTCHA pre-warming**: Moved from parallel-mode-only to Step 1 prerequisites, benefiting
+    both single-competitor and parallel paths.
+  - **Description optimization**: Added trigger phrases for "competitive landscape", "market
+    intelligence", "compare product to company", "who are our competitors", "analyze competition".
+- **0.5.0** -- Added Project Context Familiarization (Step 3) to ground competitor
   briefs in the user's own product reality. Auto-detects project docs from NotebookLM, offers
   7-question quick briefing or doc upload if none found, caches context in config profile for
   subsequent runs. Sections 3, 6, 8, 9 now produce strategic comparisons instead of generic profiles.
-  Section header template includes `vs: {project_name}`. Pipeline is now 10 steps (was 9); parallel
-  agents run Steps 4-7 (was 3-6), sequential completion runs Steps 8-10 (was 7-9).
+  Section header template includes `vs: {project_name}`. Pipeline was 10 steps; parallel
+  agents ran Steps 4-7, sequential completion ran Steps 8-10.
 - **0.4.0** -- Parallel mode rewrite: CAPTCHA pre-warming in Phase 1, self-contained
   agent prompts with full section definitions and .status.json protocol, orchestrator blocks until all
   agents complete (no incremental notification), CAPTCHA-blocked agents write marker files for main

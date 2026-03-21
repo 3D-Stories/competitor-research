@@ -6,9 +6,11 @@ description: >-
   and produces structured per-section markdown files plus a combined brief for NotebookLM upload.
   Use this skill whenever the user wants to research a competitor, build a competitor profile, create a market brief,
   consolidate competitor sources, audit competitive intelligence, or mentions "competitor research", "market brief",
-  "competitive analysis", or "competitor profile". Also trigger when the user asks to clean up or consolidate
-  NotebookLM sources about a specific company. Includes a setup mode (/competitor-research setup) for first-run
-  dependency configuration.
+  "competitive analysis", "competitor profile", "competitive landscape", or "market intelligence".
+  Also trigger when the user asks to compare their product to another company, research a specific company
+  (e.g., "research Greenlight", "find out about Finch"), asks "who are our competitors", wants to analyze
+  the competition, or asks to clean up or consolidate NotebookLM sources about a specific company.
+  Includes a setup mode (/competitor-research setup) for first-run dependency configuration.
 ---
 
 # Competitor Research Pipeline
@@ -20,315 +22,13 @@ organized by section.
 The goal is dual-purpose output: briefs that serve **investor pitch materials** (market sizing, funding,
 threat assessment) AND **product strategy decisions** (feature gaps, user sentiment, positioning).
 
-## Prerequisites Check (Auto-Run)
-
-**Before ANY research run**, check if the config file exists:
-
-```bash
-test -f ~/.config/competitor-research/config.json
-```
-
-**If missing:** Inform the user and run `/competitor-research setup` automatically:
-"No configuration found. Running first-time setup..."
-Then invoke the setup workflow below. Do NOT proceed with research until setup completes.
-
-**If present:** Read the config and verify key dependencies are still working:
-1. `notebooklm status` — if auth expired, call `/vnc-service:run` and re-auth
-2. Check MCP `mcp__google-ai-search__search_ai` is in available tools — if missing, inform user to restart session
-3. Proceed to research workflow
-
 ## Setup Mode (`/competitor-research setup`)
 
-Run this once to configure all dependencies. Can also be re-run to reconfigure.
+Read `references/setup.md` and follow the 8-step setup wizard. Setup runs once per environment to
+configure Node.js, VNC (headless), NotebookLM CLI, Google AI Mode MCP, notebook selection,
+critique tool, and persistent config at `~/.config/competitor-research/config.json`.
 
-### Setup Step 0: Node.js & npm (v20+)
-
-Check if Node.js v20+ and npm are installed (required for MCP servers and npx commands):
-
-```bash
-if command -v node >/dev/null 2>&1; then
-  NODE_VER=$(node --version | sed 's/v//' | cut -d. -f1)
-  if [ "$NODE_VER" -ge 20 ]; then
-    echo "Node.js v$(node --version) OK"
-  else
-    echo "Node.js v$(node --version) is too old (need v20+). Upgrading..."
-    # Install latest LTS via NodeSource
-    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-  fi
-else
-  echo "Node.js not installed. Installing latest LTS..."
-  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-  sudo apt-get install -y nodejs
-fi
-node --version && npx --version
-```
-
-If sudo is unavailable, tell the user to install Node.js v20+ manually (https://nodejs.org).
-
-### Setup Step 1: Environment Detection
-
-```bash
-if [ -n "$DISPLAY" ] && xdpyinfo >/dev/null 2>&1; then
-  HEADLESS=false
-  echo "Graphical display detected"
-else
-  HEADLESS=true
-  echo "Headless server detected — VNC will be needed for browser auth"
-fi
-```
-
-### Setup Step 2: Virtual Display (headless only)
-
-If headless:
-1. Check if `/vnc-service:setup` skill is available in the skills list
-2. If available: invoke `/vnc-service:setup` to install and configure the virtual display + VNC
-3. If NOT available: install the vnc-service plugin automatically via Bash:
-   ```bash
-   claude plugin marketplace add 3D-Stories/vnc-service
-   claude plugin install vnc-service@vnc-service
-   ```
-   Then tell the user: "vnc-service plugin installed. Run `/reload-plugins` to activate it."
-   (`/reload-plugins` is a session command that must be run by the user — it cannot be
-   called from Bash.)
-   After reload, verify `/vnc-service:setup` is now in the available skills list.
-   Then invoke `/vnc-service:setup`.
-4. After setup, invoke `/vnc-service:run` to ensure it's running and get connection info
-5. Wait for user to confirm VNC connection before proceeding
-
-### Setup Step 3: NotebookLM CLI
-
-1. Check: `notebooklm --version`
-2. If missing, install via **pipx** (not pip — modern Ubuntu/Debian use PEP 668 which blocks
-   direct pip install into the system Python):
-   ```bash
-   # Install the CLI
-   pipx install notebooklm-py
-
-   # Inject Playwright (needed for browser-based auth and source management)
-   pipx inject notebooklm-py playwright
-
-   # Install Chromium browser for Playwright (must use the venv's playwright binary)
-   # Find the actual venv path:
-   pipx list  # Look for the notebooklm-py venv location
-   # Then install chromium using that path:
-   $(pipx environment --value PIPX_LOCAL_VENVS)/notebooklm-py/bin/playwright install chromium
-
-   # Install system dependencies for Chromium (libatk, libcairo, libpango, etc.)
-   # Without this, Chromium crashes with "cannot open shared object file" errors
-   sudo $(pipx environment --value PIPX_LOCAL_VENVS)/notebooklm-py/bin/playwright install-deps chromium
-   ```
-   If sudo is unavailable for `install-deps`, the user must install the packages manually.
-   Run without sudo to see the list of required packages.
-
-   Then install the Claude Code skill and reload:
-   ```bash
-   notebooklm skill install
-   ```
-   ```
-   /reload-plugins
-   ```
-
-3. Check: `notebooklm status` for auth
-4. If not authenticated:
-   - If headless: invoke `/vnc-service:run`, then run login with DISPLAY=:99
-   - If graphical: run login directly
-
-   **Important:** The `notebooklm login` command opens a browser and waits for ENTER after
-   OAuth completes. When running from Claude Code's Bash tool, stdin sends EOF immediately
-   which aborts the login. Use this two-step pattern:
-
-   **Step A: Launch login in background so user can interact with the browser:**
-   ```bash
-   DISPLAY=:99 notebooklm login &
-   LOGIN_PID=$!
-   echo "Login launched (PID: $LOGIN_PID). Complete OAuth in VNC, then tell me when done."
-   ```
-   (On graphical desktops, omit `DISPLAY=:99`.)
-
-   Tell the user: "Complete OAuth in the browser (VNC for headless). Let me know when done."
-
-   **Step B: After user confirms OAuth is complete, save the auth:**
-   ```bash
-   # Kill the background login (it served its purpose — browser profile has the session)
-   kill $LOGIN_PID 2>/dev/null
-   # Re-run with immediate ENTER to save auth from the persistent browser profile
-   echo "" | DISPLAY=:99 notebooklm login
-   ```
-
-   The persistent browser profile (`~/.notebooklm/browser_profile`) retains the Google
-   session, so the second run opens an already-authenticated browser and immediately saves.
-
-   **If login fails** (e.g., missing dependencies, Chromium crash): kill the background
-   process before retrying to avoid orphaned browser instances:
-   ```bash
-   kill $LOGIN_PID 2>/dev/null
-   # Fix the issue, then retry from Step A
-   ```
-
-5. Verify: `notebooklm status` shows authenticated
-
-### Setup Step 4: Google AI Mode MCP
-
-1. Check if `mcp__google-ai-search__search_ai` is in the available tools list
-2. If missing: install the MCP server via Bash:
-   ```bash
-   claude mcp add google-ai-search npx google-ai-mode-mcp@latest
-   ```
-   Note: Do NOT use `xvfb-run` wrapper — use the persistent display from `/vnc-service:setup`.
-   The MCP server will use `DISPLAY=:99` from the environment.
-
-   Inform user: "Google AI Mode MCP installed. You'll need to **restart the session** for the
-   MCP server to initialize. MCP servers only load at session start."
-   **HARD STOP — Do NOT proceed to Step 5 or any later step.** Steps 5-7 require the MCP
-   server to be running, which only happens after a session restart. If you skip ahead, the
-   user will be asked setup questions out of order and the config file will be written before
-   MCP is verified. Tell the user to restart and re-run `/competitor-research setup` — it will
-   detect that Steps 1-3 are already complete and resume from Step 4 verification.
-
-3. If present: test with a simple search:
-   ```
-   mcp__google-ai-search__search_ai(query="test", headless=true)
-   ```
-
-4. If the test search fails with **"Chromium distribution 'chrome' is not found"**:
-   The MCP server uses **patchright** (a Playwright fork), NOT the Playwright Chromium
-   installed in Step 3. These are separate browser installations:
-   - Step 3 installed Playwright Chromium for **NotebookLM** (login, source management)
-   - This step installs patchright Chrome for the **Google AI Mode MCP** (web search)
-
-   Install it automatically via Bash:
-   ```bash
-   sudo npx patchright install chrome
-   ```
-   If sudo is unavailable, tell the user to run that command in a separate terminal.
-
-   Note: `apt install google-chrome-stable` does NOT work — it's not in default Ubuntu repos.
-   The patchright installer downloads the correct Chromium build.
-
-   After install, retry the test search.
-
-5. If the test search fails with **CAPTCHA required**:
-   - Invoke `/vnc-service:run` for connection info
-   - Retry with `headless: false` so browser renders on VNC display
-   - User solves CAPTCHA in VNC
-   - Verify a headless search works after CAPTCHA is cleared
-
-### Setup Step 5: NotebookLM Notebook Selection
-
-Ask the user:
-```
-Which NotebookLM notebook should competitor research use?
-  1. Use an existing notebook (I'll list them)
-  2. Create a new notebook
-
-Which option?
-```
-
-**Option 1:** Use `notebooklm list --json` (NOT `notebooklm list` which truncates IDs):
-   ```bash
-   notebooklm list --json
-   ```
-   Parse the full UUIDs from the JSON output. Truncated IDs from the table view cause RPC errors.
-   User picks a notebook → `notebooklm use <full_uuid>`
-**Option 2:** `notebooklm create "Market Research: {project_name}"` → set context
-
-### Setup Step 6: Critique Tool Detection
-
-Check for critique tools in priority order:
-
-1. **BMAD Party Mode** — search for installation (check common paths first, then broad search):
-   ```bash
-   # Check common locations first (fast)
-   for d in ~/bmad ~/BMAD ~/.bmad; do
-     [ -f "$d/_bmad/_config/agent-manifest.csv" ] && echo "$d/_bmad" && break
-   done
-   # Fallback: broader search with depth limit (slower but thorough)
-   find ~ -maxdepth 4 -name "agent-manifest.csv" -path "*/_bmad/*" 2>/dev/null | head -1
-   ```
-   If found: store the **parent directory of `_config/`** as `bmad_path` (e.g., `/home/user/bmad/_bmad`).
-   Step 7 will reference the agent manifest at `{bmad_path}/_config/agent-manifest.csv`.
-
-2. **reflexion:critique** — check if available in skills list.
-   If available: use as critique tool.
-
-3. **Neither found** — offer to install a critique tool. BMAD is preferred:
-   ```
-   No critique tool found. Which would you like to install?
-
-   1. BMAD Method (Recommended) — multi-agent party mode with specialized personas
-      (analyst, architect, PM, QA, tech writer) for interactive review
-   2. Reflexion — multi-judge review with consensus building
-   3. Skip — use basic self-critique (always available)
-   ```
-
-   **If BMAD chosen:** Requires Node.js >= 20 (verified in Step 0). Install via Bash
-   with non-interactive flags (the default TUI hangs in Claude Code):
-   ```bash
-   npx bmad-method install --directory . --tools claude-code --yes
-   ```
-   The `--yes` flag accepts defaults and skips interactive prompts.
-   `--tools claude-code` selects the Claude Code toolset.
-   `--directory .` installs in the current working directory.
-   After install, re-run the BMAD detection search to find the installed path.
-   Store `bmad_path` in config.
-
-   **If Reflexion chosen:** Install via Bash:
-   ```bash
-   claude plugin marketplace add NeoLabHQ/context-engineering-kit
-   claude plugin install reflexion@NeoLabHQ/context-engineering-kit
-   ```
-   Then tell user: "Run `/reload-plugins` to activate reflexion."
-
-4. **Self-critique** as last resort — always available, no install needed.
-
-### Setup Step 7: Save Configuration
-
-Save all configuration to `~/.config/competitor-research/config.json`.
-
-The config supports **named profiles** for users researching competitors across multiple
-projects or notebooks. Setup creates a `default` profile. Users can add more by re-running
-setup or manually editing the config.
-
-```json
-{
-  "version": 2,
-  "created_at": "ISO timestamp",
-  "updated_at": "ISO timestamp",
-  "headless": true,
-  "critique_tool": "bmad|reflexion|self",
-  "bmad_path": "/home/user/bmad/_bmad",
-  "mcp_installed": true,
-  "vnc_configured": true,
-  "default_profile": "chorestory",
-  "profiles": {
-    "chorestory": {
-      "notebook_id": "uuid",
-      "notebook_title": "ChoreStory Investor Research",
-      "project_path": "/home/user/projects/chorestory_business"
-    }
-  }
-}
-```
-
-Global settings (headless, critique_tool, mcp_installed, vnc_configured) are shared across
-profiles. Per-profile settings are notebook_id, notebook_title, and project_path.
-
-```bash
-mkdir -p ~/.config/competitor-research
-```
-
-Report:
-```
-Setup complete!
-  ✓ Virtual display (Xvfb :99 + VNC on 5999)
-  ✓ NotebookLM (authenticated)
-  ✓ Google AI Mode MCP (CAPTCHA cleared)
-  ✓ Notebook: {notebook_title}
-  ✓ Critique: {bmad|reflexion|self}
-
-Run /competitor-research <name> to start researching.
-```
+Setup supports **named profiles** for researching competitors across multiple projects or notebooks.
 
 ## Input
 
@@ -362,6 +62,7 @@ The skill accepts:
 ├── 09-threat-assessment.md                  # Section 9
 ├── 10-sources-and-data-quality.md           # Section 10
 ├── {competitor_name}-full-brief.md          # Combined file (all sections, for NotebookLM)
+├── .status.json                             # Pipeline progress (for resume capability)
 └── raw/                                     # Raw source texts (for audit trail)
     ├── notebooklm/                          # Fulltexts pulled from NotebookLM
     │   ├── {source_id_short}.md
@@ -373,137 +74,111 @@ The skill accepts:
 
 ## Section Definitions
 
-Each section file follows this template:
+Read `references/section-definitions.md` for the complete section template and all 10
+section descriptions. That file is the **single source of truth** — use it when writing
+sections (Step 6) and when constructing parallel agent prompts.
 
-```markdown
-# {Section Title}
-> Competitor: {name} | vs: {project_name} | Last Updated: {date} | Confidence: {high/medium/low}
-
-{Section content with inline citations [S#-N] where S# is section number, N is source number}
-
----
-*Sources: See 10-sources-and-data-quality.md for full citation list*
-```
-
-### Section 1: Company Overview
-What the company does, when founded, headquarters, team size, leadership, mission statement,
-and a 2-3 sentence positioning summary. Include the company's own description of itself
-(from their website/app store listing) alongside an objective characterization.
-
-### Section 2: Funding & Financials
-All known funding rounds with dates, amounts, and lead investors. Total raised, most recent
-valuation, estimated revenue (with confidence level), burn rate signals (hiring velocity,
-office changes), and financial health indicators. Note which figures are confirmed vs estimated.
-**Critical:** Flag any funding data that may be from a different company with the same name.
-
-### Section 3: Product & Features
-Core feature set organized by category. Platform availability (iOS, Android, web).
-Key UX patterns and design philosophy. Recent feature launches (last 12 months).
-Technology signals (job postings, blog posts). Integration ecosystem.
-*Note: Comparisons to the user's product reflect product vision/design goals, not shipped product.*
-
-### Section 4: Pricing & Monetization
-Pricing tiers with exact amounts. Free vs paid feature breakdown. Subscription model
-(monthly/annual, family plans). Estimated conversion rate (free-to-paid) if available.
-ARPU signals. Price change history.
-
-### Section 5: User Base & Traction
-Downloads (App Store + Google Play), DAU/MAU estimates, app store ratings and review counts,
-growth trajectory, geographic distribution, engagement metrics (session length, retention).
-Note data freshness — app store numbers change quickly. Include growth rate analysis where data permits.
-Label single-source estimates clearly.
-
-### Section 6: Target Market & Positioning
-Primary and secondary audiences. Age demographics. Market segment
-(kids fintech, gamified wellness, family management, etc.). Brand voice and messaging strategy.
-How they position against competitors. Marketing channels observed.
-Include TAM/market size context if data available.
-
-### Section 7: User Sentiment & Reviews
-Themes from app store reviews, Reddit, social media. What users love most (top 3).
-What users complain about most (top 3). Feature requests users frequently mention.
-Churn signals and reasons. NPS or satisfaction data if available.
-Quote 3-5 representative user comments verbatim with attribution.
-
-### Section 8: Strengths & Weaknesses
-SWOT-style analysis relative to the user's product. What this competitor does better.
-Where the user's product has an advantage. Neutral differences.
-Be honest — the point is to inform strategy, not to feel good.
-*Note: User product comparisons reflect product vision, not shipped product.*
-
-### Section 9: Threat Assessment
-Is this a direct, indirect, or potential competitor? Likelihood of entering the user's
-specific niche. Their defensive moats (network effects, brand, data, partnerships, capital).
-Scenarios where they become a serious threat. Recommended strategic response.
-
-### Section 10: Sources & Data Quality
-Complete citation list with section citation map, source quality tiers (primary/secondary/tertiary),
-wrong-company exclusions, blocked sources, and a data conflict resolution log.
-Include confidence ratings per section with limiting factors.
-
-## Workflow
+## Workflow (9 Steps)
 
 Execute these steps in order. Each step has a clear checkpoint before proceeding.
 
-### Step 1: Prerequisites Check
+### Step 1: Prerequisites, Profile & Directory Setup
 
-1. Check for `~/.config/competitor-research/config.json`
-2. If missing: run setup mode (see above), then return here
-3. If present: quick validation (notebooklm status, MCP available)
-4. Load config values (notebook_id, critique_tool, bmad_path, etc.)
+This step validates the environment, selects the profile, and prepares the output directories.
 
-### Step 2: Profile, Notebook & Directory Setup
+**1a. Config check:**
 
-1. **Select profile:** Load the default profile from config. If multiple profiles exist,
-   or if the user's current context doesn't match the default, ask:
-   ```
-   Using profile: "chorestory" (notebook: ChoreStory Investor Research)
-   Use this profile, or switch? Available profiles: chorestory, [other...]
-   Or: create a new profile for this research
-   ```
-   If no profile matches the current work, create a new one inline (ask for notebook + path).
+```bash
+test -f ~/.config/competitor-research/config.json
+```
 
-2. **Verify notebook:** Set NotebookLM context to the profile's notebook:
-   `notebooklm use {profile.notebook_id}`
-   If the notebook no longer exists (deleted or shared access revoked), ask the user to
-   pick a new one and update the profile.
+If missing: inform the user and run `/competitor-research setup` automatically.
+Do NOT proceed with research until setup completes.
 
-3. **Verify project path:** Check if `{profile.project_path}` exists on disk.
-   If not set or missing: ask the user for the output base directory.
-   If the active rawgentic project path is detected and differs from the profile,
-   ask: "Use {rawgentic_path} or {profile.project_path}?"
+If present: read the config and quick-validate:
+1. `notebooklm status` — if auth expired, invoke `/vnc-service:run` and re-auth
+2. Check MCP `mcp__google-ai-search__search_ai` is in available tools — if missing, inform user to restart session
+3. Load config values (notebook_id, critique_tool, bmad_path, etc.)
 
-4. **Parse competitor names:** Split input by commas. Trim whitespace from each name.
-   Build a list of competitors to process. Single names without commas = one competitor.
+**1b. CAPTCHA pre-warming:**
 
-5. **For each competitor in the list:**
-   a. Confirm the competitor name with the user
-   b. If the name is ambiguous, ask for clarification (product clarifier)
-   c. Ask for **domain keywords** (or infer): "Domain keywords for {name}?"
-   d. Suggest output directory: `{project_path}/competitors/{competitor_name}/`
-   e. Create directory structure: `{output_dir}/raw/notebooklm/` and `{output_dir}/raw/web/`
+Run a test search before any research begins — this clears any pending CAPTCHA so that
+subsequent searches (both single-competitor and parallel agents) proceed without interruption:
 
-   For multiple competitors, present all at once for confirmation:
-   ```
-   Competitors to research:
-     1. Finch (self-care pet app) — keywords: gamified wellness self-care
-        Output: ./competitors/finch/
-     2. Greenlight (kids debit card) — keywords: kids fintech debit card
-        Output: ./competitors/greenlight/
-     3. BusyKid (chore + fintech) — keywords: kids chores allowance
-        Output: ./competitors/busykid/
+```
+mcp__google-ai-search__search_ai(query="test", headless=true)
+```
 
-   Confirm all, or modify any? (confirm / modify #)
-   ```
+If CAPTCHA triggers: invoke `/vnc-service:run`, retry with `headless: false`, user solves
+in VNC, then verify headless works. The MCP browser is shared — one cleared session benefits
+all subsequent searches.
 
-6. **Determine execution mode:**
-   - If 1 competitor: proceed with single-competitor pipeline (Steps 3-9)
-   - If 2+ competitors: proceed with **parallel mode** (see "Parallel Mode" section)
+**1c. Profile selection:**
+
+Load the default profile from config. If multiple profiles exist, or if the user's current
+context doesn't match the default, ask:
+```
+Using profile: "chorestory" (notebook: ChoreStory Investor Research)
+Use this profile, or switch? Available profiles: chorestory, [other...]
+Or: create a new profile for this research
+```
+If no profile matches, create a new one inline (ask for notebook + path).
+
+**1d. Notebook verification:**
+
+Set NotebookLM context: `notebooklm use {profile.notebook_id}`
+If the notebook no longer exists, ask user to pick a new one and update the profile.
+
+**1e. Project path verification:**
+
+Check if `{profile.project_path}` exists on disk. If not set or missing: ask the user for
+the output base directory. If the active rawgentic project path differs from the profile,
+ask: "Use {rawgentic_path} or {profile.project_path}?"
+
+**1f. Competitor parsing and confirmation:**
+
+Parse competitor names: split input by commas, trim whitespace. For each competitor:
+- Confirm the name with the user
+- If ambiguous, ask for clarification (product clarifier)
+- Ask for **domain keywords** (or infer): "Domain keywords for {name}?"
+- Suggest output directory: `{project_path}/competitors/{competitor_name}/`
+
+For multiple competitors, present all at once for confirmation:
+```
+Competitors to research:
+  1. Finch (self-care pet app) — keywords: gamified wellness self-care
+     Output: ./competitors/finch/
+  2. Greenlight (kids debit card) — keywords: kids fintech debit card
+     Output: ./competitors/greenlight/
+
+Confirm all, or modify any? (confirm / modify #)
+```
+
+**1g. Resume detection:**
+
+For each competitor, check if `{output_dir}/.status.json` exists with partial completion:
+```
+Found partial research for {name} (completed through Step {N}).
+Resume from Step {N+1}, or start fresh? (resume / fresh)
+```
+If "resume": skip completed steps, proceed from the next one.
+If "fresh": delete `.status.json` and `raw/` directory, start from Step 3.
+
+**1h. Create directory structure:**
+
+For each competitor: `mkdir -p {output_dir}/raw/notebooklm {output_dir}/raw/web`
+
+**1i. Determine execution mode:**
+
+- If 1 competitor: proceed with single-competitor pipeline (Steps 2-9)
+- If 2+ competitors: proceed with **parallel mode** (see "Parallel Mode" section)
+
+Write initial `.status.json`: `{"step": 1, "completed": true}`
 
 **Checkpoint:** Profile loaded, notebook context set, all competitors disambiguated with
 domain keywords, directories created, execution mode determined.
 
-### Step 3: Project Context Familiarization
+### Step 2: Project Context Familiarization
 
 Before analyzing competitors, understand the user's own product so that Sections 3, 6, 8,
 and 9 produce strategic comparisons, not generic profiles.
@@ -519,8 +194,8 @@ Project context loaded from config:
 
 Use this context, or refresh it? (use / refresh)
 ```
-If "use": proceed to Step 4 with this context.
-If "refresh": continue to step 2 below.
+If "use": proceed to Step 3 with this context.
+If "refresh": continue to sub-step 2 below.
 
 **2. Search NotebookLM for project documents:**
 
@@ -531,82 +206,41 @@ Run `notebooklm source list --json` and filter for sources matching patterns lik
 - `README`, `CLAUDE_*.md` (AI context files)
 - `brainstorm`, `concept`, `vision`
 
-Also check for markdown sources that are clearly about the user's own project (not
-competitors, not external articles).
-
 **3a. If project context found in NotebookLM:**
 
-- Pull fulltext of the top 3-5 most relevant project documents (prioritize executive
-  summaries and product specs)
-- Extract and store:
-  - `product_name`: name and one-line description
-  - `primary_user` / `buyer`: target audience (may be different people)
-  - `jtbd`: core problem being solved, what existing solutions fall short
-  - `differentiators`: key features, approach, technology
-  - `monetization`: revenue model
-  - `stage`: idea / MVP / production / growth
-  - `category`: market segment
-- Present summary: "Here's what I understand about {product_name} — is this accurate
-  for the competitor comparison?" Let user correct before proceeding.
+- Pull fulltext of the top 3-5 most relevant project documents
+- Extract and store: product_name, primary_user, buyer, jtbd, differentiators, monetization, stage, category
+- Present summary: "Here's what I understand about {product_name} — is this accurate?" Let user correct.
 
 **3b. If NO project context found:**
 
 Present options:
 ```
-No project context found in this notebook. Competitor briefs are much more
-useful when I understand your own product. Would you like to:
+No project context found. Competitor briefs are much more useful when I
+understand your product. Would you like to:
 
-  1. Quick briefing (Recommended) — Answer 5-7 questions and I'll create
-     an executive summary to use as context
-  2. Upload existing docs — Point me to local files (pitch deck, PRD,
-     README) and I'll pull context from those
-  3. Skip — Proceed without project context (Sections 8-9 will be
-     generic competitive analysis without product-specific comparisons)
+  1. Quick briefing (Recommended) — Answer 5-7 questions
+  2. Upload existing docs — Point me to local files
+  3. Skip — Sections 8-9 will be generic competitive analysis
 ```
 
-**Option 1 (Quick briefing):** Ask these questions:
-1. What's the product name and what does it do in one sentence?
-2. Who is the primary user? Who is the buyer? (May be the same person)
-3. What's the core problem you're solving? What existing solutions fall short?
-4. What are your key differentiators? (Features, approach, technology)
-5. How do you plan to make money? (Subscription, freemium, etc.)
-6. What stage are you at? (Idea, prototype, MVP, production, growth)
-7. What market/category do you consider yourself in?
+**Option 1 (Quick briefing):** Ask 7 questions about the product (name, audience, problem,
+differentiators, monetization, stage, category). Generate a Project Context Brief (300-500 words),
+save to `{project_path}/project-context.md`, and upload to NotebookLM.
 
-From answers, generate a Project Context Brief (300-500 words) and:
-- Save to `{project_path}/project-context.md`
-- Upload to NotebookLM: `notebooklm source add {project_path}/project-context.md`
-- Use as context for the rest of the run
+**Option 2 (Upload docs):** Ask for file paths. Read files, extract structured context, confirm.
 
-**Option 2 (Upload docs):** Ask for file paths. Read files, extract structured context,
-confirm with user, proceed.
-
-**Option 3 (Skip):** Proceed, but add caveats:
-- Sections 8, 9 headers: `> Note: No project context. Comparisons are generic.`
-- Index: "This brief was generated without project context."
+**Option 3 (Skip):** Add caveats to Sections 8-9 headers and index.
 
 **4. Save project context to config:**
 
-Update `config.profiles[profile].project_context`:
-```json
-"project_context": {
-  "product_name": "ChoreStory",
-  "one_liner": "RPG-gamified family chore app",
-  "primary_user": "Kids aged 6-16",
-  "buyer": "Parents",
-  "jtbd": "Make kids want to do chores through RPG gameplay",
-  "differentiators": ["cooperative RPG", "AI avatars", "cross-family servers"],
-  "monetization": "$5/$10 subscription",
-  "stage": "early-production",
-  "category": "gamified family productivity"
-}
-```
+Update `config.profiles[profile].project_context` with the extracted fields.
 
-On subsequent runs, load from config (fast) and offer refresh if needed.
+Write `.status.json`: `{"step": 2, "completed": true}`
 
-**Checkpoint:** Project context loaded and confirmed by user (or skipped with caveats noted).
+**Checkpoint:** Project context loaded and confirmed (or skipped with caveats noted).
 
-### Step 4: Pull Existing NotebookLM Sources
+### Step 3: Pull Existing NotebookLM Sources
 
 1. Run `notebooklm source list --json` to get all sources
 2. Filter sources by competitor name AND domain keywords (case-insensitive)
@@ -615,15 +249,17 @@ On subsequent runs, load from config (fast) and offer refresh if needed.
 5. For each confirmed source, run `notebooklm source fulltext {source_id} --json`
 6. Save each fulltext to `raw/notebooklm/{source_id_first8chars}.md` with YAML header
 7. Track all source IDs: unique sources, duplicate IDs, wrong-company IDs
-8. **Quick section mapping**: Before web research, scan pulled sources and note which sections
-   have strong data vs. gaps. This informs targeted web research in Step 4.
+8. **Quick section mapping**: Scan pulled sources and note which sections have strong data vs. gaps.
+   This informs targeted web research in Step 4.
+
+Write `.status.json`: `{"step": 3, "completed": true}`
 
 **Checkpoint:** Fulltexts saved. Source IDs recorded. Section gap analysis complete.
 
-### Step 5: Web Research via Google AI Mode MCP
+### Step 4: Web Research via Google AI Mode MCP
 
 Run targeted searches using the `mcp__google-ai-search__search_ai` MCP tool.
-Use domain keywords from Step 2 to make searches competitor-specific.
+Use domain keywords from Step 1 to make searches competitor-specific.
 
 **Required searches** (adapt competitor name + domain keywords):
 1. `"{competitor} {domain_keywords} company overview founding team funding {year}"` → company-overview.md
@@ -632,7 +268,7 @@ Use domain keywords from Step 2 to make searches competitor-specific.
 4. `"{competitor} {domain_keywords} reviews user sentiment Reddit complaints {year}"` → user-sentiment.md
 5. `"{competitor} {domain_keywords} competitors market position comparison {year}"` → market-position.md
 
-**Gap-targeted searches** (run based on Step 3 section gap analysis):
+**Gap-targeted searches** (based on Step 3 section gap analysis):
 6-8. Additional searches targeting specific sections that are data-thin
 
 Save each result to `raw/web/search-{topic}.md` with YAML header (query, date, source).
@@ -643,9 +279,11 @@ Save each result to `raw/web/search-{topic}.md` with YAML header (query, date, s
 3. User solves CAPTCHA in VNC
 4. Retry remaining searches with `headless: true`
 
+Write `.status.json`: `{"step": 4, "completed": true}`
+
 **Checkpoint:** At least 5 web research files saved.
 
-### Step 6: Analyze & Verify
+### Step 5: Analyze & Verify
 
 Read ALL raw sources (both NotebookLM and web) and:
 
@@ -654,65 +292,50 @@ Read ALL raw sources (both NotebookLM and web) and:
 3. **Cross-reference**: Note agreements and discrepancies between sources
 4. **Freshness check**: Flag data older than 12 months
 5. **Gap identification**: Report remaining gaps to user
-6. **Web research contamination check**: Flag any AI-generated web research that contains
-   data from a wrong-company (this is common — AI search results conflate same-name companies)
+6. **Web research contamination check**: Flag AI-generated web research that contains
+   data from a wrong-company (common — AI search results conflate same-name companies)
+
+Write `.status.json`: `{"step": 5, "completed": true}`
 
 **Checkpoint:** User informed of wrong-company sources, gaps, and conflicts.
 
-### Step 7: Write Section Files
+### Step 6: Write Section Files
 
-Write each section file following the section definitions above. Guidelines:
-
-- **Be specific**: "$35M estimated ARR" not "significant revenue"
-- **Cite with section prefixes**: Use [S#-N] format for unambiguous citations
-- **State confidence**: Each section header includes a confidence level
-- **Note unknowns**: "No public data available" is better than omitting
-- **Label single-source estimates**: Mark data from one source as "single-source estimate"
-- **Product vision caveat**: When comparing to user's product, note these reflect
-  product vision/design goals, not shipped product
-- **Keep sections focused**: 300-800 words each
+Read `references/section-definitions.md` for the section template and all 10 section definitions.
+Write each section file following those definitions.
 
 Write files 01 through 10, then:
 - Create `00-index.md` with executive summary, reading paths (investor track / product track),
   table of contents, and key numbers at a glance
 - Create `{competitor_name}-full-brief.md` concatenating all sections with `---` dividers
 
-### Step 8: Critique & Quality Review
+Write `.status.json`: `{"step": 6, "completed": true}`
 
-**Run BEFORE deleting NotebookLM sources** — if the critique finds fatal flaws, we still have
-the original sources to work with.
+### Step 7: Critique & Quality Review
 
-**Read `critique_tool` from config. Use ONLY the configured tool. Do NOT substitute.**
+**Run BEFORE deleting NotebookLM sources** — if the critique finds fatal flaws, the original
+sources are still available.
+
+**Read `critique_tool` from config. Prefer the configured tool; fall back gracefully if
+unavailable** (e.g., BMAD path no longer exists, reflexion plugin was uninstalled). If falling
+back, inform the user which tool was used and why the configured tool was unavailable.
+
+**Fallback cascade:** configured tool → self-critique (always available).
 
 **If critique_tool = "bmad":**
 
-You MUST invoke BMAD Party Mode. Do NOT use reflexion:critique or self-critique instead.
-
 1. Read the agent manifest at `{bmad_path}/_config/agent-manifest.csv`
-2. Read the BMAD config at `{bmad_path}/../_bmad/core/config.yaml` (or the parent dir
-   containing `core/config.yaml`)
-3. Read the party mode workflow at `{bmad_path}/../_bmad/core/skills/bmad-party-mode/workflow.md`
-4. Follow the workflow.md instructions to activate party mode:
-   - Load agent roster from the manifest
-   - Welcome the user with agent introductions
-   - Select 3-5 relevant agents for the review (prioritize: Analyst/Mary, Architect/Winston,
-     Tech Writer/Paige, PM/John, QA/Quinn — or their equivalents in the manifest)
-   - Orchestrate an **interactive** multi-agent discussion about the brief
-   - The topic is: "Review the competitor market brief at {path_to_full_brief}.
-     Evaluate for: factual accuracy, source quality, analytical rigor, completeness
-     across all 10 sections, and actionability for both investor pitch and product strategy."
-   - Let the user participate in the discussion — this is interactive, not a batch report
-5. After the discussion concludes, summarize findings and action items
+2. Read the BMAD config at `{bmad_path}/core/config.yaml`
+3. Read the party mode workflow at `{bmad_path}/core/skills/bmad-party-mode/workflow.md`
+4. Follow the workflow.md to activate party mode with 3-5 relevant agents
+5. Topic: "Review the competitor market brief at {path_to_full_brief}.
+   Evaluate for: factual accuracy, source quality, analytical rigor, completeness
+   across all 10 sections, and actionability for both investor pitch and product strategy."
+6. Let the user participate — this is interactive, not a batch report
 
 **If critique_tool = "reflexion":**
 
-Invoke `/reflexion:critique` with:
-```
-Review the competitor market brief at {path_to_full_brief}.
-Evaluate for: factual accuracy, source quality, analytical rigor,
-completeness across all 10 sections, and actionability for both
-investor pitch and product strategy contexts.
-```
+Invoke `/reflexion:critique` with the same evaluation topic as above.
 
 **If critique_tool = "self":**
 
@@ -723,14 +346,14 @@ point critique and present to the user.
 **After critique:** If significant issues found, offer to revise affected sections.
 Regenerate the combined file if revisions are made.
 
-**Checkpoint:** Report which critique tool was used:
+Write `.status.json`: `{"step": 7, "completed": true}`
+
+**Checkpoint:** Critique completed. Report which tool was used:
 ```
 Critique completed using: {actual_tool_used} (configured: {config_value})
 ```
-If actual_tool_used differs from config_value, explain why (e.g., "BMAD not found at
-configured path — fell back to self-critique"). Brief finalized.
 
-### Step 9: Upload Consolidated Brief FIRST
+### Step 8: Upload Consolidated Brief
 
 **Upload BEFORE deleting old sources** — this eliminates the data loss window. If upload
 fails, the original sources are still intact.
@@ -742,9 +365,11 @@ fails, the original sources are still intact.
 If upload fails: inform user the brief is available locally at `{path}` and can be manually
 uploaded later. Do NOT proceed to deletion.
 
-### Step 10: Clean Up NotebookLM Sources
+Write `.status.json`: `{"step": 8, "completed": true}`
 
-**Requires user confirmation. Only proceed after Step 8 upload is verified.**
+### Step 9: Clean Up NotebookLM Sources
+
+**Requires user confirmation. Only proceed after Step 8 (upload) is verified.**
 
 1. Present the list of source IDs to delete (unique + duplicates + wrong-company)
 2. Ask: "The consolidated brief is uploaded and verified. Ready to delete these {N} old
@@ -753,6 +378,8 @@ uploaded later. Do NOT proceed to deletion.
 4. If any deletion fails mid-batch: log the failed ID, continue with remaining deletions,
    report "Deleted {N}/{total}. Failed: {list}" at end. If auth expired mid-batch, re-auth
    via `/vnc-service:run` and retry failed deletions.
+
+Write `.status.json`: `{"step": 9, "completed": true}`
 
 Report:
 ```
@@ -765,169 +392,51 @@ NotebookLM sources: was {old_count}, now {new_count} (freed {delta} slots)
 
 When multiple competitor names are provided, the skill uses a **fan-out / fan-in** pattern:
 
-### Phase 1: Shared Setup + CAPTCHA Pre-Warming (main session)
+### Phase 1: Shared Setup (main session)
 
-1. Run Step 1 (Prerequisites) once — shared across all competitors
-2. Run Step 2 (Profile, Notebook & Directory) for each competitor sequentially:
-   - Confirm/disambiguate each competitor name
-   - Collect domain keywords for each
-   - Create output directories for each
-   - This is interactive, so it runs in the main session
-3. **CAPTCHA pre-warming** — before spawning agents, run one test search from the main session:
-   ```
-   mcp__google-ai-search__search_ai(query="test", headless=true)
-   ```
-   If CAPTCHA triggers: invoke `/vnc-service:run`, retry with `headless: false`, user solves
-   in VNC, then verify headless works. This clears the CAPTCHA cookie so agents can search
-   without hitting it. The MCP browser is shared — one successful session benefits all agents.
+1. Run Step 1 (Prerequisites, Profile & Directory) for all competitors — this is interactive
+   and includes CAPTCHA pre-warming
+2. Run Step 2 (Project Context) once — shared across all competitors
 
 ### Phase 2: Parallel Research (concurrent agents)
+
+Read `references/agent-prompt-template.md` for the full template. Also read
+`references/section-definitions.md` and include the section definitions inline in each
+agent prompt (agents cannot read reference files — they need self-contained prompts).
 
 Spawn all competitor agents in a **single message** using multiple Agent tool calls.
 The Agent tool runs them concurrently, but the orchestrator **blocks until ALL agents complete**
 (there is no incremental notification — this is how Claude Code's Agent tool works).
 
-For each competitor, the agent prompt must be **fully self-contained** — agents do not inherit
-skill context. The prompt must include:
-
-- The competitor name, product clarifier, and domain keywords
-- The output directory path
-- The NotebookLM notebook ID
-- The current year (for web search queries)
-- The complete section definitions (copied from this skill, not a placeholder)
-- A `notebooklm use {notebook_id}` command as the first step
-- Instructions for Steps 4-7 only
-- A `.status.json` file protocol for error reporting
-
-**Agent prompt template** (instantiate per competitor, replacing all `{placeholder}` values):
-
-```
-You are researching competitor "{competitor_name}" ({product_clarifier}).
-Domain keywords: {domain_keywords}
-Output directory: {output_dir}
-NotebookLM notebook ID: {notebook_id}
-Current year: {current_year}
-
-Available tools: Bash, Read, Write, Edit, Glob, Grep, mcp__google-ai-search__search_ai
-Do NOT run Steps 8-10 (critique, upload, delete). Only Steps 4-7.
-
-FIRST: Set NotebookLM context:
-  notebooklm use {notebook_id}
-
-STEP 3: Pull NotebookLM Sources
-- Run: notebooklm source list --json
-- Filter for sources matching "{competitor_name}" (case-insensitive) in title or URL
-- For each match, run: notebooklm source fulltext {source_id} --json
-- Save to {output_dir}/raw/notebooklm/{source_id_first8chars}.md with YAML header
-- Track source IDs in {output_dir}/raw/notebooklm/_metadata.json
-- Note which sections have strong data vs gaps
-- Update {output_dir}/.status.json: {"step": 3, "completed": true}
-
-STEP 4: Web Research
-- Use mcp__google-ai-search__search_ai for these queries:
-  1. "{competitor_name} {domain_keywords} company overview founding team funding {current_year}"
-  2. "{competitor_name} {domain_keywords} revenue users downloads metrics {current_year}"
-  3. "{competitor_name} {domain_keywords} pricing subscription model {current_year}"
-  4. "{competitor_name} {domain_keywords} reviews user sentiment Reddit {current_year}"
-  5. "{competitor_name} {domain_keywords} competitors market position {current_year}"
-- Save results to {output_dir}/raw/web/search-{topic}.md
-- If CAPTCHA: write "captcha" to {output_dir}/.captcha_blocked and skip remaining
-  searches. Do NOT retry — the main session will handle CAPTCHA resolution.
-- Update {output_dir}/.status.json: {"step": 4, "completed": true, "searches_completed": N,
-  "captcha_blocked": true/false}
-
-STEP 5: Analyze & Verify
-- Read ALL raw sources (both NotebookLM and web)
-- Flag wrong-company sources (common with similar names)
-- Cross-reference conflicting data between sources
-- Check data freshness (flag >12 months old)
-- Identify section gaps
-- Update {output_dir}/.status.json: {"step": 5, "completed": true}
-
-STEP 6: Write Section Files
-Each section file follows this template:
-# {Section Title}
-> Competitor: {name} | vs: {project_name} | Last Updated: {date} | Confidence: {high/medium/low}
-{Content with citations [S#-N]}
----
-*Sources: See 10-sources-and-data-quality.md for full citation list*
-
-Section definitions:
-S1 Company Overview: founding, HQ, team, leadership, mission, positioning
-S2 Funding & Financials: rounds, valuation, revenue, burn rate. Flag same-name company confusion.
-S3 Product & Features: features by category, platforms, UX, recent launches, tech signals
-S4 Pricing & Monetization: exact prices, tiers, free vs paid, ARPU
-S5 User Base & Traction: downloads, DAU/MAU, ratings, growth, geo. Label single-source estimates.
-S6 Target Market & Positioning: demographics, segments, brand voice, marketing, TAM if available
-S7 User Sentiment: top 3 loves, top 3 complaints, churn signals, 3-5 verbatim quotes
-S8 Strengths & Weaknesses: SWOT relative to user's product (note: vision, not shipped product)
-S9 Threat Assessment: direct/indirect, moats, scenarios, strategic response
-S10 Sources & Data Quality: citations, quality tiers, wrong-company exclusions, conflict log
-
-Guidelines: be specific ($35M not "significant"), cite everything, state confidence,
-note unknowns honestly, 300-800 words per section.
-
-- Write 01-10 section files
-- Write 00-index.md with executive summary and reading paths
-- Write {competitor_name}-full-brief.md (combined)
-- Update {output_dir}/.status.json: {"step": 6, "completed": true, "word_count": N,
-  "sections_written": 10}
-
-FINAL STATUS: Write complete {output_dir}/.status.json:
-{"competitor": "{competitor_name}", "completed": true, "steps_completed": [3,4,5,6],
- "word_count": N, "sections_written": 10, "captcha_blocked": false,
- "errors": [], "started_at": "ISO", "finished_at": "ISO"}
-```
+Each agent runs Steps 3-6 (pull sources, web research, analyze, write sections).
 
 **Important constraints:**
-- Agents share the same MCP server — web searches queue through one browser, not truly
-  parallel. The analysis and writing steps ARE truly parallel.
-- Agents share the same NotebookLM session — source list calls may interleave but this is
-  safe (read-only). Each agent must call `notebooklm use {notebook_id}` first to set context.
-  This writes to a shared config file but is idempotent (same notebook ID for all agents).
-- Each agent writes to its own `{output_dir}` — no file conflicts.
-- No agent should delete or upload NotebookLM sources.
+- Agents share the same MCP server — web searches queue through one browser (sequential but fast);
+  analysis and writing are truly parallel
+- Agents share the same NotebookLM session — source list calls interleave safely (read-only)
+- Each agent writes to its own `{output_dir}` — no file conflicts
+- No agent should delete or upload NotebookLM sources
 
 ### Phase 3: Sequential Completion (main session)
 
-After ALL agents complete (the orchestrator receives all results at once), process each
-competitor sequentially through Steps 8-10:
+After ALL agents complete, process each competitor sequentially through Steps 7-9:
 
 1. **Check `.status.json`** for each competitor:
+   - If `completed: true`: proceed to critique
    - If `completed: false` or file missing: agent failed. Offer to retry or complete manually.
-   - If `captcha_blocked: true`: CAPTCHA triggered during agent's web research. Resolve
-     CAPTCHA interactively (invoke `/vnc-service:run`), then run the missing searches from
-     the main session and re-analyze/rewrite affected sections.
-   - If `completed: true`: proceed to critique.
+   - If `captcha_blocked: true`: resolve CAPTCHA interactively (invoke `/vnc-service:run`),
+     then run missing searches from the main session and re-analyze/rewrite affected sections.
 
-2. **Step 8: Critique** — using the configured critique tool.
+2. **Step 7: Critique** — using the configured critique tool.
    - For **3+ competitors with BMAD**: offer a batch option: "Run self-critique on all briefs
      first, then BMAD deep-dive on the one that needs the most work? Or full BMAD on each?"
-     Running N interactive party mode sessions back-to-back is exhausting. Batch self-critique
-     + targeted BMAD deep-dive is more practical.
-   - For **reflexion or self-critique**: can process all competitors sequentially without
-     user fatigue.
+     Running N interactive party mode sessions back-to-back is exhausting.
+   - For **reflexion or self-critique**: can process all competitors sequentially.
 
-3. **Step 9: Upload** — upload each combined brief to NotebookLM
+3. **Step 8: Upload** — upload each combined brief to NotebookLM
 
-4. **Step 10: Clean up** — delete old sources (with user confirmation, can batch: "Delete all
+4. **Step 9: Clean up** — delete old sources (with user confirmation, can batch: "Delete all
    old sources for Finch, Greenlight, and BusyKid? (y/n)")
-
-### Progress Tracking
-
-Track and display status for the user:
-
-```
-Competitor Research Progress:
-  ● Finch        — Steps 4-7 running (agents active, waiting for all to complete)
-  ● Greenlight   — Steps 4-7 running
-  ● BusyKid      — Steps 4-7 running
-  ---
-  All agents complete. Processing Steps 8-10:
-  ✓ Finch        — Steps 8-10 done
-  ● Greenlight   — Step 8 (critique) in progress
-  ○ BusyKid      — Pending
-```
 
 ### Error Recovery
 
@@ -938,6 +447,20 @@ If an agent fails or produces partial output:
    and writing from the main session using the existing raw files.
 3. If Step 3 failed (no sources pulled): offer to retry the agent or skip this competitor.
 4. If agent timed out (no `.status.json`): inform user, offer manual completion.
+
+### Progress Tracking
+
+```
+Competitor Research Progress:
+  ● Finch        — Steps 3-6 running (agents active, waiting for all to complete)
+  ● Greenlight   — Steps 3-6 running
+  ● BusyKid      — Steps 3-6 running
+  ---
+  All agents complete. Processing Steps 7-9:
+  ✓ Finch        — Steps 7-9 done
+  ● Greenlight   — Step 7 (critique) in progress
+  ○ BusyKid      — Pending
+```
 
 ### Fallback: Sequential Mode
 

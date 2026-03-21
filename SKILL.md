@@ -88,7 +88,13 @@ If headless:
    pipx list  # Look for the notebooklm-py venv location
    # Then install chromium using that path:
    $(pipx environment --value PIPX_LOCAL_VENVS)/notebooklm-py/bin/playwright install chromium
+
+   # Install system dependencies for Chromium (libatk, libcairo, libpango, etc.)
+   # Without this, Chromium crashes with "cannot open shared object file" errors
+   sudo $(pipx environment --value PIPX_LOCAL_VENVS)/notebooklm-py/bin/playwright install-deps chromium
    ```
+   If sudo is unavailable for `install-deps`, the user must install the packages manually.
+   Run without sudo to see the list of required packages.
 
    Then install the Claude Code skill and reload:
    ```bash
@@ -105,27 +111,35 @@ If headless:
 
    **Important:** The `notebooklm login` command opens a browser and waits for ENTER after
    OAuth completes. When running from Claude Code's Bash tool, stdin sends EOF immediately
-   which aborts the login. Use this pattern instead:
+   which aborts the login. Use this two-step pattern:
 
+   **Step A: Launch login in background so user can interact with the browser:**
    ```bash
-   # Poll-based login: keeps process alive until auth file appears, then auto-confirms
-   (while [ ! -f ~/.notebooklm/storage_state.json ] || \
-     [ $(( $(date +%s) - $(stat -c %Y ~/.notebooklm/storage_state.json) )) -gt 10 ]; do \
-     sleep 2; done; sleep 3; echo "") | notebooklm login
+   DISPLAY=:99 notebooklm login &
+   LOGIN_PID=$!
+   echo "Login launched (PID: $LOGIN_PID). Complete OAuth in VNC, then tell me when done."
+   ```
+   (On graphical desktops, omit `DISPLAY=:99`.)
+
+   Tell the user: "Complete OAuth in the browser (VNC for headless). Let me know when done."
+
+   **Step B: After user confirms OAuth is complete, save the auth:**
+   ```bash
+   # Kill the background login (it served its purpose — browser profile has the session)
+   kill $LOGIN_PID 2>/dev/null
+   # Re-run with immediate ENTER to save auth from the persistent browser profile
+   echo "" | DISPLAY=:99 notebooklm login
    ```
 
-   This polls for the auth file to be written/updated, waits 3 seconds for it to finalize,
-   then sends ENTER automatically. No fixed timeout — completes as soon as the user finishes
-   OAuth.
+   The persistent browser profile (`~/.notebooklm/browser_profile`) retains the Google
+   session, so the second run opens an already-authenticated browser and immediately saves.
 
-   For headless servers, prefix with `DISPLAY=:99`:
+   **If login fails** (e.g., missing dependencies, Chromium crash): kill the background
+   process before retrying to avoid orphaned browser instances:
    ```bash
-   (while [ ! -f ~/.notebooklm/storage_state.json ] || \
-     [ $(( $(date +%s) - $(stat -c %Y ~/.notebooklm/storage_state.json) )) -gt 10 ]; do \
-     sleep 2; done; sleep 3; echo "") | DISPLAY=:99 notebooklm login
+   kill $LOGIN_PID 2>/dev/null
+   # Fix the issue, then retry from Step A
    ```
-
-   Tell the user: "Complete OAuth in the browser. The login will auto-confirm once done."
 
 5. Verify: `notebooklm status` shows authenticated
 

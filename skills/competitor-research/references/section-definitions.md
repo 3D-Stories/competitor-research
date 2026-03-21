@@ -22,18 +22,27 @@ Each section file follows this template:
 What the company does, when founded, headquarters, team size, leadership, mission statement,
 and a 2-3 sentence positioning summary. Include the company's own description of itself
 (from their website/app store listing) alongside an objective characterization.
+**LinkedIn data**: Employee count and growth rate from company page, department breakdown,
+headquarters confirmation, key leadership bios (founder backgrounds, prior companies, domain
+expertise), and notable advisors or board members.
 
 ## Section 2: Funding & Financials
 All known funding rounds with dates, amounts, and lead investors. Total raised, most recent
 valuation, estimated revenue (with confidence level), burn rate signals (hiring velocity,
 office changes), and financial health indicators. Note which figures are confirmed vs estimated.
 **Critical:** Flag any funding data that may be from a different company with the same name.
+**LinkedIn data**: Funding announcements from company posts, investor profiles linked to the
+company, employee growth rate as burn rate proxy (rapid hiring = funded, shrinking = cutting),
+and leadership posts celebrating milestones ("excited to announce our Series B").
 
 ## Section 3: Product & Features
 Core feature set organized by category. Platform availability (iOS, Android, web).
 Key UX patterns and design philosophy. Recent feature launches (last 12 months).
 Technology signals (job postings, blog posts). Integration ecosystem.
 *Note: Comparisons to the user's product reflect product vision/design goals, not shipped product.*
+**LinkedIn data**: Job posting tech stacks reveal architecture (e.g., "React Native" = cross-platform,
+"ML engineer" = AI features planned). Company posts announcing feature launches, partnerships,
+and integrations. Engineering blog posts shared on LinkedIn signal technical maturity.
 
 ## Section 4: Pricing & Monetization
 Pricing tiers with exact amounts. Free vs paid feature breakdown. Subscription model
@@ -45,12 +54,18 @@ Downloads (App Store + Google Play), DAU/MAU estimates, app store ratings and re
 growth trajectory, geographic distribution, engagement metrics (session length, retention).
 Note data freshness — app store numbers change quickly. Include growth rate analysis where data permits.
 Label single-source estimates clearly.
+**LinkedIn data**: Employee count growth as a traction proxy (correlates with user/revenue growth),
+follower count on company page (brand awareness), engagement on company posts (reach), and
+milestone announcements ("1M users!", "100K families") from leadership or company posts.
 
 ## Section 6: Target Market & Positioning
 Primary and secondary audiences. Age demographics. Market segment
 (kids fintech, gamified wellness, family management, etc.). Brand voice and messaging strategy.
 How they position against competitors. Marketing channels observed.
 Include TAM/market size context if data available.
+**LinkedIn data**: Company page tagline and description (how they position themselves),
+content topics and tone of company posts (brand voice), geographic signals from office
+locations and job postings, and "People also viewed" companies (competitive self-clustering).
 
 ## Section 7: User Sentiment & Reviews
 Themes from app store reviews, Reddit, social media. What users love most (top 3).
@@ -68,6 +83,10 @@ Be honest — the point is to inform strategy, not to feel good.
 Is this a direct, indirect, or potential competitor? Likelihood of entering the user's
 specific niche. Their defensive moats (network effects, brand, data, partnerships, capital).
 Scenarios where they become a serious threat. Recommended strategic response.
+**LinkedIn data**: Hiring patterns as strategic intent signals (hiring in your niche = potential
+threat), leadership backgrounds indicating likely expansion directions, investor portfolio
+overlap (shared investors may push toward similar markets), and partnership announcements
+signaling ecosystem expansion.
 
 ## Section 10: Sources & Data Quality
 Complete citation list with section citation map, source quality tiers (primary/secondary/tertiary),

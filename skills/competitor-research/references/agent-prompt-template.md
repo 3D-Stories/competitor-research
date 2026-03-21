@@ -37,11 +37,18 @@ STEP 3: Pull NotebookLM Sources
 
 STEP 4: Web Research
 - Use mcp__google-ai-search__search_ai for these queries:
+  General:
   1. "{competitor_name} {domain_keywords} company overview founding team funding {current_year}"
   2. "{competitor_name} {domain_keywords} revenue users downloads metrics {current_year}"
   3. "{competitor_name} {domain_keywords} pricing subscription model {current_year}"
   4. "{competitor_name} {domain_keywords} reviews user sentiment Reddit {current_year}"
   5. "{competitor_name} {domain_keywords} competitors market position {current_year}"
+  LinkedIn:
+  6. "{competitor_name} site:linkedin.com/company employees team size headquarters"
+  7. "{competitor_name} site:linkedin.com CEO founder CTO leadership executive"
+  8. "{competitor_name} site:linkedin.com hiring jobs open positions engineering product"
+  9. "{competitor_name} site:linkedin.com funding raised series investors announcement"
+  10. "{competitor_name} {domain_keywords} site:linkedin.com product launch update announcement"
 - Run additional gap-targeted searches based on Step 3 section gap analysis
 - Save results to {output_dir}/raw/web/search-{topic}.md
 - If CAPTCHA: write "captcha" to {output_dir}/.captcha_blocked and skip remaining

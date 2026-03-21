@@ -268,8 +268,30 @@ Use domain keywords from Step 1 to make searches competitor-specific.
 4. `"{competitor} {domain_keywords} reviews user sentiment Reddit complaints {year}"` → user-sentiment.md
 5. `"{competitor} {domain_keywords} competitors market position comparison {year}"` → market-position.md
 
+**LinkedIn searches** (rich source for team, hiring, culture, and growth signals):
+6. `"{competitor} site:linkedin.com/company employees team size headquarters"` → linkedin-company.md
+7. `"{competitor} site:linkedin.com CEO founder CTO leadership executive"` → linkedin-leadership.md
+8. `"{competitor} site:linkedin.com hiring jobs open positions engineering product"` → linkedin-hiring.md
+9. `"{competitor} site:linkedin.com funding raised series investors announcement"` → linkedin-funding.md
+10. `"{competitor} {domain_keywords} site:linkedin.com product launch update announcement"` → linkedin-updates.md
+
+**LinkedIn data extraction guidance:**
+- **Team size & growth**: LinkedIn company pages show employee count and growth rate.
+  Extract current headcount, department breakdown (if visible), and growth % over
+  6/12 months. Rapid engineering hiring = product investment. Rapid sales hiring =
+  go-to-market push. Layoff signals (shrinking headcount) = burn rate pressure.
+- **Leadership profiles**: Founder backgrounds, previous companies, domain expertise,
+  board members, advisors. Prior exits or VC connections signal fundraising ability.
+- **Job postings**: Technologies in job descriptions reveal tech stack, upcoming features
+  (e.g., hiring "ML engineer" = AI feature coming), and geographic expansion (remote
+  vs office locations). Senior hires (VP, Director) signal new strategic initiatives.
+- **Company updates/posts**: Product launches, partnerships, milestones, culture signals.
+  Engagement metrics (likes, comments) on posts indicate brand reach.
+- **Connected companies**: "People also viewed" or investor profiles linked to the company
+  reveal competitive landscape and investor ecosystem.
+
 **Gap-targeted searches** (based on Step 3 section gap analysis):
-6-8. Additional searches targeting specific sections that are data-thin
+11-13. Additional searches targeting specific sections that are data-thin
 
 Save each result to `raw/web/search-{topic}.md` with YAML header (query, date, source).
 
@@ -281,7 +303,7 @@ Save each result to `raw/web/search-{topic}.md` with YAML header (query, date, s
 
 Write `.status.json`: `{"step": 4, "completed": true}`
 
-**Checkpoint:** At least 5 web research files saved.
+**Checkpoint:** At least 10 web research files saved (5 general + 5 LinkedIn).
 
 ### Step 5: Analyze & Verify
 

@@ -181,19 +181,21 @@ If headless:
    ```
 
 4. If the test search fails with **"Chromium distribution 'chrome' is not found"**:
-   Chrome/patchright browser is not installed. Tell the user:
-   ```
-   The Google AI Mode MCP needs Chrome installed. Run this in a separate terminal
-   (Claude Code cannot handle interactive sudo):
+   The MCP server uses **patchright** (a Playwright fork), NOT the Playwright Chromium
+   installed in Step 3. These are separate browser installations:
+   - Step 3 installed Playwright Chromium for **NotebookLM** (login, source management)
+   - This step installs patchright Chrome for the **Google AI Mode MCP** (web search)
 
-     sudo npx patchright install chrome
+   Install it automatically via Bash:
+   ```bash
+   sudo npx patchright install chrome
+   ```
+   If sudo is unavailable, tell the user to run that command in a separate terminal.
 
    Note: `apt install google-chrome-stable` does NOT work — it's not in default Ubuntu repos.
    The patchright installer downloads the correct Chromium build.
 
-   Let me know when it's done and I'll retry the test search.
-   ```
-   Wait for user confirmation, then retry the test search.
+   After install, retry the test search.
 
 5. If the test search fails with **CAPTCHA required**:
    - Invoke `/vnc-service:run` for connection info

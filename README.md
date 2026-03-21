@@ -60,7 +60,13 @@ blocks direct pip install into system Python):
 pipx install notebooklm-py
 pipx inject notebooklm-py playwright
 $(pipx environment --value PIPX_LOCAL_VENVS)/notebooklm-py/bin/playwright install chromium
+# Install system dependencies for Chromium (libatk, libcairo, libpango, etc.)
+# Without this, Chromium crashes with "cannot open shared object file" errors
+sudo $(pipx environment --value PIPX_LOCAL_VENVS)/notebooklm-py/bin/playwright install-deps chromium
 ```
+
+If sudo is unavailable for `install-deps`, the user must install the packages manually.
+Run without sudo to see the list of required packages.
 
 Then installs the Claude Code skill and reloads:
 
@@ -72,7 +78,32 @@ notebooklm skill install
 ```
 
 Handles OAuth login (via VNC with `DISPLAY=:99` if headless, direct browser if graphical).
-Uses a poll-based login pattern to auto-confirm when OAuth completes.
+The `notebooklm login` command waits for ENTER after OAuth completes, but Claude Code's Bash
+tool sends EOF immediately which aborts login. Uses a two-step pattern instead:
+
+**Step A:** Launch login in background so the user can interact with the browser:
+```bash
+DISPLAY=:99 notebooklm login &
+LOGIN_PID=$!
+```
+User completes OAuth in the browser (via VNC for headless).
+
+**Step B:** After user confirms OAuth is complete, kill the background process and re-run
+with immediate ENTER to save auth from the persistent browser profile:
+```bash
+kill $LOGIN_PID 2>/dev/null
+echo "" | DISPLAY=:99 notebooklm login
+```
+
+The persistent browser profile (`~/.notebooklm/browser_profile`) retains the Google session,
+so the second run opens an already-authenticated browser and immediately saves.
+
+**If login fails** (e.g., missing dependencies, Chromium crash): kill the background process
+before retrying to avoid orphaned browser instances:
+```bash
+kill $LOGIN_PID 2>/dev/null
+# Fix the issue, then retry from Step A
+```
 
 ### Step 4: Google AI Mode MCP
 
@@ -280,7 +311,9 @@ from Bash.
 
 ## Version History
 
-- **0.3.4** -- Current release.
+- **0.3.5** -- Current release. Added Playwright system dependency install step (`playwright install-deps chromium`).
+  Replaced poll-based login with two-step background/save pattern. Added orphan process cleanup guidance.
+- **0.3.4** -- Previous release.
 - **0.3.x** -- Incremental fixes and refinements to the pipeline, setup flow, and error handling.
 - **0.2.0** -- Major rewrite. Added setup wizard (7-step first-run configuration), Google AI
   Mode MCP integration (replacing skill-based web research), BMAD/reflexion critique cascade,

@@ -225,7 +225,12 @@ Which NotebookLM notebook should competitor research use?
 Which option?
 ```
 
-**Option 1:** `notebooklm list` → user picks → `notebooklm use <id>`
+**Option 1:** Use `notebooklm list --json` (NOT `notebooklm list` which truncates IDs):
+   ```bash
+   notebooklm list --json
+   ```
+   Parse the full UUIDs from the JSON output. Truncated IDs from the table view cause RPC errors.
+   User picks a notebook → `notebooklm use <full_uuid>`
 **Option 2:** `notebooklm create "Market Research: {project_name}"` → set context
 
 ### Setup Step 6: Critique Tool Detection
@@ -257,10 +262,14 @@ Check for critique tools in priority order:
    3. Skip — use basic self-critique (always available)
    ```
 
-   **If BMAD chosen:** Install via Bash:
+   **If BMAD chosen:** Requires Node.js >= 20 (verified in Step 0). Install via Bash
+   with non-interactive flags (the default TUI hangs in Claude Code):
    ```bash
-   npx bmad-method install
+   npx bmad-method install --directory . --tools claude-code --yes
    ```
+   The `--yes` flag accepts defaults and skips interactive prompts.
+   `--tools claude-code` selects the Claude Code toolset.
+   `--directory .` installs in the current working directory.
    After install, re-run the BMAD detection search to find the installed path.
    Store `bmad_path` in config.
 

@@ -148,7 +148,7 @@ for competitor research.
 Searches for critique tools in priority order:
 
 1. **BMAD Party Mode** (preferred) -- searches common paths for `agent-manifest.csv`.
-   If not found, offers to install: `npx bmad-method install`
+   If not found, offers to install: `npx bmad-method install --directory . --tools claude-code --yes` (non-interactive)
 2. **reflexion:critique** -- checks if available in skills list. If not found, offers to install:
    ```bash
    claude plugin marketplace add NeoLabHQ/context-engineering-kit

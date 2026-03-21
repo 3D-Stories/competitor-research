@@ -185,6 +185,39 @@ profile. Users can add more by re-running setup or manually editing the config.
 Global settings (headless, critique_tool, mcp_installed, vnc_configured) are shared across
 profiles. Per-profile settings are notebook_id, notebook_title, and project_path.
 
+## Project Context
+
+Step 3 of the pipeline gathers context about the user's own product so that competitor briefs
+produce strategic comparisons rather than generic profiles. This grounds Sections 3 (Product &
+Features), 6 (Target Market & Positioning), 8 (Strengths & Weaknesses), and 9 (Threat
+Assessment) in actual product reality.
+
+**Auto-detection from NotebookLM:** The skill searches the active notebook for project documents
+(executive summaries, pitch decks, PRDs, READMEs) and extracts structured context: product name,
+audience, JTBD, differentiators, monetization model, and stage.
+
+**Quick briefing (7 questions):** If no project documents are found in NotebookLM, the skill
+offers a quick briefing -- 7 questions about the product (name, audience, problem, differentiators,
+monetization, stage, category). Answers are used to generate a Project Context Brief that is
+saved locally and uploaded to NotebookLM for future runs.
+
+**Upload existing docs:** Users can point to local files (pitch deck, PRD, README) and the skill
+extracts context from those instead.
+
+**Skip option:** Proceeding without project context is possible, but Sections 8 and 9 will
+contain generic competitive analysis without product-specific SWOT comparisons. The index and
+affected section headers are annotated with a "no project context" caveat.
+
+**Cached in config profile:** Once gathered, project context is saved to
+`config.profiles[profile].project_context` and loaded automatically on subsequent runs. The skill
+offers a refresh option if the cached context is stale.
+
+**Section header template** includes the project name for quick identification:
+
+```
+> Competitor: {name} | vs: {project_name} | Last Updated: {date} | Confidence: {level}
+```
+
 ## Usage
 
 ### Research a Competitor
@@ -235,7 +268,7 @@ When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
 
 **Phase 3: Sequential Completion (interactive)**
 - Processes ALL competitors after ALL agents complete (not first-done)
-- For each competitor, reads `.status.json` and runs Steps 7-9:
+- For each competitor, reads `.status.json` and runs Steps 8-10:
   - Critique using configured tool (BMAD/reflexion/self)
   - Upload consolidated brief to NotebookLM
   - Clean up old sources (with user confirmation)
@@ -244,7 +277,7 @@ When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
 
 **Error Recovery**
 - Reads `.status.json` per competitor to determine which step failed
-- Partial failures (e.g., Steps 3-4 done, 5-6 failed): offers to run remaining steps
+- Partial failures (e.g., Steps 4-5 done, 6-7 failed): offers to run remaining steps
   from the main session using existing raw files
 - Missing `.status.json` (agent timeout): informs user, offers manual completion
 - CAPTCHA-blocked agents: resolves CAPTCHA interactively, backfills missing searches
@@ -252,34 +285,35 @@ When 2+ competitors are provided, the skill uses a fan-out / fan-in pattern:
 Progress tracking:
 ```
 Competitor Research Progress:
-  ● Finch        — Steps 3-6 running (agents active, waiting for all to complete)
-  ● Greenlight   — Steps 3-6 running
-  ● BusyKid      — Steps 3-6 running
+  ● Finch        — Steps 4-7 running (agents active, waiting for all to complete)
+  ● Greenlight   — Steps 4-7 running
+  ● BusyKid      — Steps 4-7 running
   ---
-  All agents complete. Processing Steps 7-9:
-  ✓ Finch        — Steps 7-9 done
-  ● Greenlight   — Step 7 (critique) in progress
+  All agents complete. Processing Steps 8-10:
+  ✓ Finch        — Steps 8-10 done
+  ● Greenlight   — Step 8 (critique) in progress
   ○ BusyKid      — Pending
 ```
 
-## Pipeline (9 Steps)
+## Pipeline (10 Steps)
 
 | Step | Name | What Happens |
 |------|------|-------------|
 | **1** | Prerequisites Check | Validates config exists. If missing, runs setup automatically. Quick-checks NotebookLM auth and MCP availability. |
 | **2** | Profile, Notebook & Directory Setup | Selects profile, verifies notebook context, confirms competitor name, collects domain keywords, creates output directory structure. |
-| **3** | Pull Existing NotebookLM Sources | Lists all sources, filters by competitor name + domain keywords. User confirms include/exclude. Pulls fulltext for each source. Performs quick section gap analysis to inform targeted web research. |
-| **4** | Web Research via Google AI Mode MCP | Runs 5 required searches (overview, traction, pricing, sentiment, market position) plus gap-targeted searches based on Step 3 analysis. Handles CAPTCHA via VNC. Saves results to `raw/web/`. |
-| **5** | Analyze & Verify | Reads all raw sources. Flags wrong-company data, cross-references facts, checks freshness (>12 months), identifies gaps, checks for AI search contamination from same-name companies. Reports conflicts to user. |
-| **6** | Write Section Files | Writes 10 section files (01-10), the index (00), and the combined full brief. Follows section templates with confidence headers and inline citations `[S#-N]`. |
-| **7** | Critique & Quality Review | **Runs BEFORE deleting NotebookLM sources** so originals remain if fatal flaws are found. Uses configured critique tool (BMAD / reflexion / self-critique). Offers to revise affected sections. Regenerates combined file if revisions are made. |
-| **8** | Upload Consolidated Brief | **Uploads BEFORE deleting old sources** to eliminate data loss window. Uploads combined brief to NotebookLM. Verifies it appears in source list. If upload fails, informs user of local path -- does NOT proceed to deletion. |
-| **9** | Clean Up NotebookLM Sources | Requires explicit user confirmation. Deletes old sources (unique + duplicates + wrong-company). Reports count freed. Handles mid-batch failures gracefully. |
+| **3** | Project Context Familiarization | Loads or creates project context (product name, audience, JTBD, differentiators, monetization, stage). Searches NotebookLM for project docs, offers quick briefing if none found, caches in config profile. Grounds Sections 3, 6, 8, 9 in actual product reality. |
+| **4** | Pull Existing NotebookLM Sources | Lists all sources, filters by competitor name + domain keywords. User confirms include/exclude. Pulls fulltext for each source. Performs quick section gap analysis to inform targeted web research. |
+| **5** | Web Research via Google AI Mode MCP | Runs 5 required searches (overview, traction, pricing, sentiment, market position) plus gap-targeted searches based on Step 4 analysis. Handles CAPTCHA via VNC. Saves results to `raw/web/`. |
+| **6** | Analyze & Verify | Reads all raw sources. Flags wrong-company data, cross-references facts, checks freshness (>12 months), identifies gaps, checks for AI search contamination from same-name companies. Reports conflicts to user. |
+| **7** | Write Section Files | Writes 10 section files (01-10), the index (00), and the combined full brief. Follows section templates with confidence headers and inline citations `[S#-N]`. |
+| **8** | Critique & Quality Review | **Runs BEFORE deleting NotebookLM sources** so originals remain if fatal flaws are found. Uses configured critique tool (BMAD / reflexion / self-critique). Offers to revise affected sections. Regenerates combined file if revisions are made. |
+| **9** | Upload Consolidated Brief | **Uploads BEFORE deleting old sources** to eliminate data loss window. Uploads combined brief to NotebookLM. Verifies it appears in source list. If upload fails, informs user of local path -- does NOT proceed to deletion. |
+| **10** | Clean Up NotebookLM Sources | Requires explicit user confirmation. Deletes old sources (unique + duplicates + wrong-company). Reports count freed. Handles mid-batch failures gracefully. |
 
-Key ordering: critique runs BEFORE delete (Step 7 before 9), upload runs BEFORE delete
-(Step 8 before 9). This ensures no data loss if critique finds fatal flaws or upload fails.
+Key ordering: critique runs BEFORE delete (Step 8 before 10), upload runs BEFORE delete
+(Step 9 before 10). This ensures no data loss if critique finds fatal flaws or upload fails.
 
-In parallel mode, Steps 3-6 run concurrently across all competitors via background agents. Steps 7-9 run sequentially in the main session.
+In parallel mode, Steps 4-7 run concurrently across all competitors via background agents. Steps 8-10 run sequentially in the main session.
 
 ## Output Structure
 
@@ -312,7 +346,7 @@ Each section file follows this template:
 
 ```markdown
 # {Section Title}
-> Competitor: {name} | Last Updated: {date} | Confidence: {high/medium/low}
+> Competitor: {name} | vs: {project_name} | Last Updated: {date} | Confidence: {high/medium/low}
 
 {Section content with inline citations [S#-N]}
 
@@ -370,7 +404,13 @@ from Bash.
 
 ## Version History
 
-- **0.4.0** -- Current release. Parallel mode rewrite: CAPTCHA pre-warming in Phase 1, self-contained
+- **0.5.0** -- Current release. Added Project Context Familiarization (Step 3) to ground competitor
+  briefs in the user's own product reality. Auto-detects project docs from NotebookLM, offers
+  7-question quick briefing or doc upload if none found, caches context in config profile for
+  subsequent runs. Sections 3, 6, 8, 9 now produce strategic comparisons instead of generic profiles.
+  Section header template includes `vs: {project_name}`. Pipeline is now 10 steps (was 9); parallel
+  agents run Steps 4-7 (was 3-6), sequential completion runs Steps 8-10 (was 7-9).
+- **0.4.0** -- Parallel mode rewrite: CAPTCHA pre-warming in Phase 1, self-contained
   agent prompts with full section definitions and .status.json protocol, orchestrator blocks until all
   agents complete (no incremental notification), CAPTCHA-blocked agents write marker files for main
   session backfill, Phase 3 processes all competitors after all agents finish with batch critique option

@@ -377,7 +377,7 @@ Each section file follows this template:
 
 ```markdown
 # {Section Title}
-> Competitor: {name} | Last Updated: {date} | Confidence: {high/medium/low}
+> Competitor: {name} | vs: {project_name} | Last Updated: {date} | Confidence: {high/medium/low}
 
 {Section content with inline citations [S#-N] where S# is section number, N is source number}
 
@@ -503,7 +503,110 @@ Execute these steps in order. Each step has a clear checkpoint before proceeding
 **Checkpoint:** Profile loaded, notebook context set, all competitors disambiguated with
 domain keywords, directories created, execution mode determined.
 
-### Step 3: Pull Existing NotebookLM Sources
+### Step 3: Project Context Familiarization
+
+Before analyzing competitors, understand the user's own product so that Sections 3, 6, 8,
+and 9 produce strategic comparisons, not generic profiles.
+
+**1. Check config for cached project context:**
+
+If `config.profiles[profile].project_context` exists and is populated, load it and present:
+```
+Project context loaded from config:
+  Product: {product_name} — {one_liner}
+  Audience: {primary_user} (buyer: {buyer})
+  Stage: {stage}
+
+Use this context, or refresh it? (use / refresh)
+```
+If "use": proceed to Step 4 with this context.
+If "refresh": continue to step 2 below.
+
+**2. Search NotebookLM for project documents:**
+
+Run `notebooklm source list --json` and filter for sources matching patterns like:
+- `executive_summary`, `executive-summary`, `overview`
+- `pitch_deck`, `pitch-deck`, `investor_brief`
+- `product_spec`, `product-spec`, `prd`, `product_requirements`
+- `README`, `CLAUDE_*.md` (AI context files)
+- `brainstorm`, `concept`, `vision`
+
+Also check for markdown sources that are clearly about the user's own project (not
+competitors, not external articles).
+
+**3a. If project context found in NotebookLM:**
+
+- Pull fulltext of the top 3-5 most relevant project documents (prioritize executive
+  summaries and product specs)
+- Extract and store:
+  - `product_name`: name and one-line description
+  - `primary_user` / `buyer`: target audience (may be different people)
+  - `jtbd`: core problem being solved, what existing solutions fall short
+  - `differentiators`: key features, approach, technology
+  - `monetization`: revenue model
+  - `stage`: idea / MVP / production / growth
+  - `category`: market segment
+- Present summary: "Here's what I understand about {product_name} — is this accurate
+  for the competitor comparison?" Let user correct before proceeding.
+
+**3b. If NO project context found:**
+
+Present options:
+```
+No project context found in this notebook. Competitor briefs are much more
+useful when I understand your own product. Would you like to:
+
+  1. Quick briefing (Recommended) — Answer 5-7 questions and I'll create
+     an executive summary to use as context
+  2. Upload existing docs — Point me to local files (pitch deck, PRD,
+     README) and I'll pull context from those
+  3. Skip — Proceed without project context (Sections 8-9 will be
+     generic competitive analysis without product-specific comparisons)
+```
+
+**Option 1 (Quick briefing):** Ask these questions:
+1. What's the product name and what does it do in one sentence?
+2. Who is the primary user? Who is the buyer? (May be the same person)
+3. What's the core problem you're solving? What existing solutions fall short?
+4. What are your key differentiators? (Features, approach, technology)
+5. How do you plan to make money? (Subscription, freemium, etc.)
+6. What stage are you at? (Idea, prototype, MVP, production, growth)
+7. What market/category do you consider yourself in?
+
+From answers, generate a Project Context Brief (300-500 words) and:
+- Save to `{project_path}/project-context.md`
+- Upload to NotebookLM: `notebooklm source add {project_path}/project-context.md`
+- Use as context for the rest of the run
+
+**Option 2 (Upload docs):** Ask for file paths. Read files, extract structured context,
+confirm with user, proceed.
+
+**Option 3 (Skip):** Proceed, but add caveats:
+- Sections 8, 9 headers: `> Note: No project context. Comparisons are generic.`
+- Index: "This brief was generated without project context."
+
+**4. Save project context to config:**
+
+Update `config.profiles[profile].project_context`:
+```json
+"project_context": {
+  "product_name": "ChoreStory",
+  "one_liner": "RPG-gamified family chore app",
+  "primary_user": "Kids aged 6-16",
+  "buyer": "Parents",
+  "jtbd": "Make kids want to do chores through RPG gameplay",
+  "differentiators": ["cooperative RPG", "AI avatars", "cross-family servers"],
+  "monetization": "$5/$10 subscription",
+  "stage": "early-production",
+  "category": "gamified family productivity"
+}
+```
+
+On subsequent runs, load from config (fast) and offer refresh if needed.
+
+**Checkpoint:** Project context loaded and confirmed by user (or skipped with caveats noted).
+
+### Step 4: Pull Existing NotebookLM Sources
 
 1. Run `notebooklm source list --json` to get all sources
 2. Filter sources by competitor name AND domain keywords (case-insensitive)
@@ -517,7 +620,7 @@ domain keywords, directories created, execution mode determined.
 
 **Checkpoint:** Fulltexts saved. Source IDs recorded. Section gap analysis complete.
 
-### Step 4: Web Research via Google AI Mode MCP
+### Step 5: Web Research via Google AI Mode MCP
 
 Run targeted searches using the `mcp__google-ai-search__search_ai` MCP tool.
 Use domain keywords from Step 2 to make searches competitor-specific.
@@ -542,7 +645,7 @@ Save each result to `raw/web/search-{topic}.md` with YAML header (query, date, s
 
 **Checkpoint:** At least 5 web research files saved.
 
-### Step 5: Analyze & Verify
+### Step 6: Analyze & Verify
 
 Read ALL raw sources (both NotebookLM and web) and:
 
@@ -556,7 +659,7 @@ Read ALL raw sources (both NotebookLM and web) and:
 
 **Checkpoint:** User informed of wrong-company sources, gaps, and conflicts.
 
-### Step 6: Write Section Files
+### Step 7: Write Section Files
 
 Write each section file following the section definitions above. Guidelines:
 
@@ -574,7 +677,7 @@ Write files 01 through 10, then:
   table of contents, and key numbers at a glance
 - Create `{competitor_name}-full-brief.md` concatenating all sections with `---` dividers
 
-### Step 7: Critique & Quality Review
+### Step 8: Critique & Quality Review
 
 **Run BEFORE deleting NotebookLM sources** — if the critique finds fatal flaws, we still have
 the original sources to work with.
@@ -627,7 +730,7 @@ Critique completed using: {actual_tool_used} (configured: {config_value})
 If actual_tool_used differs from config_value, explain why (e.g., "BMAD not found at
 configured path — fell back to self-critique"). Brief finalized.
 
-### Step 8: Upload Consolidated Brief FIRST
+### Step 9: Upload Consolidated Brief FIRST
 
 **Upload BEFORE deleting old sources** — this eliminates the data loss window. If upload
 fails, the original sources are still intact.
@@ -639,7 +742,7 @@ fails, the original sources are still intact.
 If upload fails: inform user the brief is available locally at `{path}` and can be manually
 uploaded later. Do NOT proceed to deletion.
 
-### Step 9: Clean Up NotebookLM Sources
+### Step 10: Clean Up NotebookLM Sources
 
 **Requires user confirmation. Only proceed after Step 8 upload is verified.**
 
@@ -693,7 +796,7 @@ skill context. The prompt must include:
 - The current year (for web search queries)
 - The complete section definitions (copied from this skill, not a placeholder)
 - A `notebooklm use {notebook_id}` command as the first step
-- Instructions for Steps 3-6 only
+- Instructions for Steps 4-7 only
 - A `.status.json` file protocol for error reporting
 
 **Agent prompt template** (instantiate per competitor, replacing all `{placeholder}` values):
@@ -706,7 +809,7 @@ NotebookLM notebook ID: {notebook_id}
 Current year: {current_year}
 
 Available tools: Bash, Read, Write, Edit, Glob, Grep, mcp__google-ai-search__search_ai
-Do NOT run Steps 7-9 (critique, upload, delete). Only Steps 3-6.
+Do NOT run Steps 8-10 (critique, upload, delete). Only Steps 4-7.
 
 FIRST: Set NotebookLM context:
   notebooklm use {notebook_id}
@@ -744,7 +847,7 @@ STEP 5: Analyze & Verify
 STEP 6: Write Section Files
 Each section file follows this template:
 # {Section Title}
-> Competitor: {name} | Last Updated: {date} | Confidence: {high/medium/low}
+> Competitor: {name} | vs: {project_name} | Last Updated: {date} | Confidence: {high/medium/low}
 {Content with citations [S#-N]}
 ---
 *Sources: See 10-sources-and-data-quality.md for full citation list*
@@ -788,7 +891,7 @@ FINAL STATUS: Write complete {output_dir}/.status.json:
 ### Phase 3: Sequential Completion (main session)
 
 After ALL agents complete (the orchestrator receives all results at once), process each
-competitor sequentially through Steps 7-9:
+competitor sequentially through Steps 8-10:
 
 1. **Check `.status.json`** for each competitor:
    - If `completed: false` or file missing: agent failed. Offer to retry or complete manually.
@@ -797,7 +900,7 @@ competitor sequentially through Steps 7-9:
      the main session and re-analyze/rewrite affected sections.
    - If `completed: true`: proceed to critique.
 
-2. **Step 7: Critique** — using the configured critique tool.
+2. **Step 8: Critique** — using the configured critique tool.
    - For **3+ competitors with BMAD**: offer a batch option: "Run self-critique on all briefs
      first, then BMAD deep-dive on the one that needs the most work? Or full BMAD on each?"
      Running N interactive party mode sessions back-to-back is exhausting. Batch self-critique
@@ -805,9 +908,9 @@ competitor sequentially through Steps 7-9:
    - For **reflexion or self-critique**: can process all competitors sequentially without
      user fatigue.
 
-3. **Step 8: Upload** — upload each combined brief to NotebookLM
+3. **Step 9: Upload** — upload each combined brief to NotebookLM
 
-4. **Step 9: Clean up** — delete old sources (with user confirmation, can batch: "Delete all
+4. **Step 10: Clean up** — delete old sources (with user confirmation, can batch: "Delete all
    old sources for Finch, Greenlight, and BusyKid? (y/n)")
 
 ### Progress Tracking
@@ -816,13 +919,13 @@ Track and display status for the user:
 
 ```
 Competitor Research Progress:
-  ● Finch        — Steps 3-6 running (agents active, waiting for all to complete)
-  ● Greenlight   — Steps 3-6 running
-  ● BusyKid      — Steps 3-6 running
+  ● Finch        — Steps 4-7 running (agents active, waiting for all to complete)
+  ● Greenlight   — Steps 4-7 running
+  ● BusyKid      — Steps 4-7 running
   ---
-  All agents complete. Processing Steps 7-9:
-  ✓ Finch        — Steps 7-9 done
-  ● Greenlight   — Step 7 (critique) in progress
+  All agents complete. Processing Steps 8-10:
+  ✓ Finch        — Steps 8-10 done
+  ● Greenlight   — Step 8 (critique) in progress
   ○ BusyKid      — Pending
 ```
 
